@@ -29,8 +29,9 @@ function extractLearningFacts(userMsg, aiReply) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { messages, systemPrompt, userId } = req.body;
-  const lastMsg = messages[messages.length - 1]?.content || "";
+  const { messages: rawMessages, systemPrompt, userId, mode, model: specificModel } = req.body;
+  const messages = rawMessages || [];
+  const lastMsg = messages.length > 0 ? (messages[messages.length - 1]?.content || "") : "";
   const { intent, data } = detectIntent(lastMsg);
 
   let toolResult = null;
@@ -187,6 +188,39 @@ export default async function handler(req, res) {
         quickReply = "All memories have been erased. Starting fresh.";
         break;
       }
+      case "execute": {
+        if (!data) break;
+        toolResult = await toolFetch("/api/tools/execute", { code: data, language: "javascript" });
+        if (toolResult?.data?.error) quickReply = `Code executed with an error: ${toolResult.data.error}`;
+        else quickReply = "Code executed successfully, sir. Output is displayed on screen.";
+        break;
+      }
+      case "screenshot": {
+        if (!data) break;
+        toolResult = await toolFetch("/api/tools/screenshot", { url: data });
+        quickReply = "I've analyzed that page for you, sir.";
+        break;
+      }
+      case "gallery": {
+        if (!data) break;
+        const prompt = data.prompt || "abstract art";
+        const count = Math.min(data.count || 4, 8);
+        const images = [];
+        for (let i = 0; i < count; i++) {
+          images.push({
+            url: `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + " variation " + (i + 1))}?width=512&height=512&seed=${Date.now() + i}&nologo=true`,
+            prompt: prompt + " variation " + (i + 1),
+          });
+        }
+        toolResult = { type: "gallery", data: { prompt, images } };
+        quickReply = `Generating ${count} variations of "${prompt}" for you, sir.`;
+        break;
+      }
+      case "vision": {
+        toolResult = { type: "vision_trigger", data: { prompt: data } };
+        quickReply = "Opening the camera now, sir. Show me what you'd like me to analyze.";
+        break;
+      }
     }
   } catch (e) {
     console.error("Tool error:", e.message);
@@ -198,6 +232,34 @@ export default async function handler(req, res) {
     const facts = extractLearningFacts(lastMsg, "");
     for (const fact of facts) addLearningFact(uid, fact);
   } catch {}
+
+  // If we have a tool result but no quickReply, generate a default one
+  if (toolResult && !quickReply) {
+    const defaults = {
+      weather: "Here's the current weather for you, sir.",
+      news: "Here are the latest headlines I found, sir.",
+      map: "I've pulled up the map for you, sir.",
+      youtube: "I found this video for you, sir.",
+      stock: "Here's the stock information you requested, sir.",
+      websearch: "Here are the search results, sir.",
+      browse: "I've fetched that page for you, sir.",
+      worldclock: "Here are the current times around the world, sir.",
+      translate: "Here's the translation, sir.",
+      currency: "Here's the conversion, sir.",
+      convert: "Here's the unit conversion, sir.",
+      wikipedia: "Here's what I found on Wikipedia, sir.",
+      image: "I've generated that image for you, sir.",
+      define: "Here's the definition, sir.",
+      qrcode: "QR code generated, sir.",
+      code: "Here's the code you requested, sir.",
+      execute: "Code executed, sir. Results are on screen.",
+      screenshot: "I've analyzed that page, sir.",
+      gallery: "Here's your AI art gallery, sir.",
+      vision_trigger: "Camera is ready, sir. Show me what you'd like analyzed.",
+      vision: "Here's my analysis, sir.",
+    };
+    quickReply = defaults[toolResult.type] || "Here are the results, sir.";
+  }
 
   if (quickReply && toolResult) {
     return res.status(200).json({ reply: quickReply, tool: toolResult });
@@ -230,7 +292,7 @@ export default async function handler(req, res) {
     (isCodeRequest ? " Write clean well-commented code." : "");
 
   try {
-    const { reply } = await chatCompletion(messages, fullSystemPrompt);
+    const { reply, model: usedModel } = await chatCompletion(messages, fullSystemPrompt, mode || "fast", specificModel || null);
 
     // Learn from the conversation
     try {
@@ -248,7 +310,7 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ reply: cleanReply, tool: toolResult || codeResult || null });
+    return res.status(200).json({ reply: cleanReply, tool: toolResult || codeResult || null, model: usedModel });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

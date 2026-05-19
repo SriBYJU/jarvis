@@ -34,6 +34,41 @@ html, body { height: 100%; overflow: hidden; background: #04070f; color: #e0e8f0
 
 .status-dot { width: 8px; height: 8px; border-radius: 50%; }
 
+/* ── Mode Toggle ─────────────────────────────────────────────────── */
+.mode-toggle { display: flex; border: 1px solid rgba(126,207,255,0.15); border-radius: 20px; overflow: hidden; }
+.mode-btn { background: transparent; border: none; color: rgba(126,207,255,0.5); padding: 5px 12px; font-size: 10px; cursor: pointer;
+  letter-spacing: 1px; font-weight: 600; transition: all 0.3s; }
+.mode-btn.active { color: #3aff1a; background: rgba(58,255,26,0.1); }
+.mode-btn:hover:not(.active) { color: #7ecfff; background: rgba(126,207,255,0.05); }
+
+/* ── Model Picker ────────────────────────────────────────────────── */
+.model-picker-wrapper { position: relative; }
+.model-picker-btn { background: transparent; border: 1px solid rgba(126,207,255,0.15); color: #7ecfff; padding: 5px 12px;
+  border-radius: 20px; font-size: 10px; cursor: pointer; letter-spacing: 0.5px; transition: all 0.3s; max-width: 140px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-picker-btn:hover { border-color: #7ecfff; background: rgba(126,207,255,0.05); }
+.model-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: rgba(4,7,15,0.97); border: 1px solid rgba(126,207,255,0.2);
+  border-radius: 10px; min-width: 300px; max-height: 400px; overflow-y: auto; z-index: 200; backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6); }
+.model-option { padding: 8px 14px; cursor: pointer; font-size: 11px; transition: background 0.2s; border-bottom: 1px solid rgba(126,207,255,0.05); }
+.model-option:hover { background: rgba(126,207,255,0.08); }
+.model-option:last-child { border-bottom: none; }
+
+/* ── Upload Button ───────────────────────────────────────────────── */
+.upload-btn { background: rgba(126,207,255,0.1); border: 1px solid rgba(126,207,255,0.2); color: #7ecfff; width: 40px; height: 40px;
+  border-radius: 10px; cursor: pointer; font-size: 22px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
+.upload-btn:hover { background: rgba(126,207,255,0.2); }
+
+/* ── File Banner ─────────────────────────────────────────────────── */
+.file-banner { padding: 6px 16px; background: rgba(126,207,255,0.08); border-top: 1px solid rgba(126,207,255,0.1);
+  font-size: 12px; color: #7ecfff; display: flex; align-items: center; }
+
+/* ── Model Label ─────────────────────────────────────────────────── */
+.model-label { font-size: 9px; letter-spacing: 1px; opacity: 0.25; margin-top: 6px; text-align: center; color: #7ecfff; }
+
+/* ── Bubble Model Tag ────────────────────────────────────────────── */
+.bubble-model { font-size: 9px; opacity: 0.25; margin-top: 4px; color: #7ecfff; }
+
 /* ── Body Layout ─────────────────────────────────────────────────── */
 .jarvis-body { flex: 1; display: flex; overflow: hidden; position: relative; }
 
@@ -75,6 +110,12 @@ html, body { height: 100%; overflow: hidden; background: #04070f; color: #e0e8f0
 .orb-label { margin-top: 16px; font-size: 11px; letter-spacing: 3px; opacity: 0.6; text-align: center; }
 .persona-label { font-size: 9px; letter-spacing: 2px; opacity: 0.3; margin-top: 4px; text-align: center; }
 
+/* ── Quick Tools ─────────────────────────────────────────────────── */
+.quick-tools { display: flex; gap: 6px; margin-top: 16px; }
+.qtool-btn { background: rgba(126,207,255,0.06); border: 1px solid rgba(126,207,255,0.12); color: #7ecfff; padding: 5px 10px;
+  border-radius: 12px; font-size: 10px; cursor: pointer; letter-spacing: 1px; transition: all 0.2s; }
+.qtool-btn:hover { background: rgba(126,207,255,0.15); border-color: #7ecfff; }
+
 /* ── Chat Column ─────────────────────────────────────────────────── */
 .chat-col { flex: 1; display: flex; flex-direction: column; min-width: 0; border-left: 1px solid rgba(126,207,255,0.06); border-right: 1px solid rgba(126,207,255,0.06); }
 
@@ -87,12 +128,15 @@ html, body { height: 100%; overflow: hidden; background: #04070f; color: #e0e8f0
 .bubble.assistant { align-self: flex-start; background: rgba(58,255,26,0.06); border: 1px solid rgba(58,255,26,0.1); }
 .bubble.system { align-self: center; background: rgba(255,215,0,0.08); border: 1px solid rgba(255,215,0,0.15); font-size: 12px; color: #ffd700; padding: 8px 16px; border-radius: 20px; }
 
+.bubble-text a { color: #7ecfff; text-decoration: underline; }
+.bubble-text a:hover { color: #aadcff; }
+
 .cursor-blink { animation: blink 0.8s infinite; }
 
 .empty-chat { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; opacity: 0.6; }
 .empty-title { font-size: 28px; font-weight: 300; letter-spacing: 4px; color: #7ecfff; }
 .empty-sub { font-size: 14px; opacity: 0.5; }
-.quick-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; max-width: 400px; }
+.quick-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; max-width: 500px; }
 .quick-btn { background: rgba(126,207,255,0.08); border: 1px solid rgba(126,207,255,0.15); color: #7ecfff; padding: 6px 14px; border-radius: 20px;
   font-size: 12px; cursor: pointer; transition: all 0.2s; }
 .quick-btn:hover { background: rgba(126,207,255,0.15); border-color: #7ecfff; }
@@ -110,10 +154,13 @@ html, body { height: 100%; overflow: hidden; background: #04070f; color: #e0e8f0
 .send-btn:disabled { opacity: 0.3; cursor: default; }
 
 /* ── Tool Column ─────────────────────────────────────────────────── */
-.tool-col { width: 340px; flex-shrink: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
-.tool-col.expanded { width: 500px; }
+.tool-col { flex-shrink: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; transition: width 0.2s; }
 .tool-col::-webkit-scrollbar { width: 4px; }
 .tool-col::-webkit-scrollbar-thumb { background: rgba(126,207,255,0.15); border-radius: 4px; }
+
+/* ── Panel Resize Handle ────────────────────────────────────────── */
+.panel-resize-handle { width: 4px; cursor: col-resize; background: rgba(126,207,255,0.06); transition: background 0.2s; flex-shrink: 0; }
+.panel-resize-handle:hover { background: rgba(126,207,255,0.2); }
 
 .tool-panel { background: rgba(126,207,255,0.04); border: 1px solid rgba(126,207,255,0.12); border-radius: 10px; overflow: hidden;
   animation: fadeUp 0.4s ease; transition: all 0.3s; }
@@ -170,6 +217,43 @@ html, body { height: 100%; overflow: hidden; background: #04070f; color: #e0e8f0
 .clock-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px; }
 .clock-cell { text-align: center; padding: 8px; background: rgba(126,207,255,0.04); border-radius: 6px; }
 
+/* ── Holographic Map ─────────────────────────────────────────────── */
+.holo-map-wrapper { position: relative; overflow: hidden; }
+.holo-overlay { position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(126,207,255,0.08) 0%, transparent 30%, transparent 70%, rgba(126,207,255,0.08) 100%);
+  border: 1px solid rgba(126,207,255,0.15); border-radius: 6px; }
+.holo-overlay::before { content: ""; position: absolute; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(126,207,255,0.03) 3px, rgba(126,207,255,0.03) 4px); }
+.holo-overlay::after { content: "HOLOGRAPHIC PROJECTION"; position: absolute; top: 6px; left: 8px; font-size: 8px; letter-spacing: 2px;
+  color: rgba(126,207,255,0.4); }
+
+/* ── Code Executor Panel ────────────────────────────────────────── */
+.exec-output { padding: 10px 12px; background: rgba(0,0,0,0.3); border-top: 1px solid rgba(126,207,255,0.08); }
+
+/* ── Gallery Panel ──────────────────────────────────────────────── */
+.gallery-grid { display: grid; gap: 6px; padding: 8px; }
+.gallery-item { position: relative; overflow: hidden; border-radius: 6px; border: 1px solid rgba(126,207,255,0.1); }
+.gallery-item img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; transition: transform 0.3s; }
+.gallery-item:hover img { transform: scale(1.05); }
+
+/* ── Vision Camera Panel ────────────────────────────────────────── */
+.vision-capture-btn { display: block; width: 100%; padding: 10px; margin-top: 8px; background: rgba(126,207,255,0.1); border: 1px solid rgba(126,207,255,0.25);
+  color: #7ecfff; border-radius: 8px; cursor: pointer; font-size: 12px; letter-spacing: 2px; transition: all 0.2s; text-align: center; }
+.vision-capture-btn:hover { background: rgba(126,207,255,0.2); }
+.vision-capture-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ── System Diagnostics Panel ───────────────────────────────────── */
+.system-panel { border-color: rgba(58,255,26,0.15); }
+.sys-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 10px; }
+.sys-item { background: rgba(58,255,26,0.04); border: 1px solid rgba(58,255,26,0.08); border-radius: 6px; padding: 8px; text-align: center; }
+.sys-label { font-size: 9px; letter-spacing: 1.5px; opacity: 0.4; color: #7ecfff; margin-bottom: 4px; }
+.sys-value { font-size: 13px; color: #7ecfff; font-weight: 600; }
+
+/* ── Markdown in Bubbles ────────────────────────────────────────── */
+.md-code-block { background: rgba(0,0,0,0.4); padding: 10px 12px; border-radius: 6px; margin: 8px 0; overflow-x: auto;
+  font-family: 'Fira Code', 'Cascadia Code', monospace; font-size: 12px; line-height: 1.5; border: 1px solid rgba(126,207,255,0.1); }
+.md-inline-code { background: rgba(126,207,255,0.1); padding: 1px 5px; border-radius: 3px; font-family: 'Fira Code', monospace; font-size: 12px; }
+
 /* ── Waveform ────────────────────────────────────────────────────── */
 .waveform { display: flex; gap: 3px; align-items: center; justify-content: center; height: 40px; margin-top: 12px; }
 .wave-bar { width: 3px; height: 8px; border-radius: 2px; animation: wave 0.6s ease-in-out infinite alternate; }
@@ -201,7 +285,7 @@ html, body { height: 100%; overflow: hidden; background: #04070f; color: #e0e8f0
 /* ── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .orb-col { display: none; }
-  .tool-col { width: 260px; }
+  .tool-col { width: 260px !important; }
 }
 @media (max-width: 600px) {
   .tool-col { display: none; }

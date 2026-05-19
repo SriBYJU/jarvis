@@ -5,9 +5,10 @@ export const config = { api: { bodyParser: true } };
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { messages, systemPrompt } = req.body;
+  const { messages: rawMessages, systemPrompt, mode, model } = req.body;
+  const messages = rawMessages || [];
 
-  const result = await chatCompletionStream(messages, systemPrompt);
+  const result = await chatCompletionStream(messages, systemPrompt || "", mode || "fast", model || null);
   if (!result) {
     return res.status(500).json({ error: "Streaming not available — no API keys configured" });
   }
