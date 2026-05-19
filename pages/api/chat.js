@@ -29,8 +29,9 @@ function extractLearningFacts(userMsg, aiReply) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { messages, systemPrompt, userId, mode, model: specificModel } = req.body;
-  const lastMsg = messages[messages.length - 1]?.content || "";
+  const { messages: rawMessages, systemPrompt, userId, mode, model: specificModel } = req.body;
+  const messages = rawMessages || [];
+  const lastMsg = messages.length > 0 ? (messages[messages.length - 1]?.content || "") : "";
   const { intent, data } = detectIntent(lastMsg);
 
   let toolResult = null;
@@ -309,7 +310,7 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({ reply: cleanReply, tool: toolResult || codeResult || null });
+    return res.status(200).json({ reply: cleanReply, tool: toolResult || codeResult || null, model: usedModel });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
