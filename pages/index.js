@@ -158,8 +158,8 @@ function WorldClockPanel({ data, expanded, onToggle }) {
   return (
     <div className={`tool-panel${expanded ? " expanded" : ""}`}>
       <div className="panel-header"><span>WORLD CLOCKS</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
-      <div className="clock-grid">{(data?.clocks || []).map((c, i) => (
-        <div key={i} className="clock-cell"><div style={{ fontSize: 11, opacity: 0.6 }}>{c.city}</div><div style={{ fontSize: 16, color: "#7ecfff" }}>{c.time}</div></div>
+      <div className="clock-grid">{(Array.isArray(data) ? data : data?.clocks || []).map((c, i) => (
+        <div key={i} className="clock-cell"><div style={{ fontSize: 11, opacity: 0.6 }}>{c.label || c.city}</div><div style={{ fontSize: 16, color: "#7ecfff" }}>{c.time}</div></div>
       ))}</div>
     </div>
   );
@@ -195,7 +195,7 @@ function NewsPanel({ data, expanded, onToggle }) {
   return (
     <div className={`tool-panel${expanded ? " expanded" : ""}`}>
       <div className="panel-header"><span>NEWS</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
-      <div className="news-list" style={{ maxHeight: expanded ? "none" : 260 }}>{(data?.articles || []).slice(0, expanded ? 10 : 4).map((a, i) => (
+      <div className="news-list" style={{ maxHeight: expanded ? "none" : 260 }}>{(Array.isArray(data) ? data : data?.articles || []).slice(0, expanded ? 10 : 4).map((a, i) => (
         <a key={i} className="news-item" href={a.url} target="_blank" rel="noreferrer">
           {a.image && <img src={a.image} alt="" className="news-img" />}
           <div><div className="news-title">{a.title}</div><div className="news-source">{a.source}</div></div>

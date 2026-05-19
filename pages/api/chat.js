@@ -199,6 +199,29 @@ export default async function handler(req, res) {
     for (const fact of facts) addLearningFact(uid, fact);
   } catch {}
 
+  // If we have a tool result but no quickReply, generate a default one
+  if (toolResult && !quickReply) {
+    const defaults = {
+      weather: "Here's the current weather for you, sir.",
+      news: "Here are the latest headlines I found, sir.",
+      map: "I've pulled up the map for you, sir.",
+      youtube: "I found this video for you, sir.",
+      stock: "Here's the stock information you requested, sir.",
+      websearch: "Here are the search results, sir.",
+      browse: "I've fetched that page for you, sir.",
+      worldclock: "Here are the current times around the world, sir.",
+      translate: "Here's the translation, sir.",
+      currency: "Here's the conversion, sir.",
+      convert: "Here's the unit conversion, sir.",
+      wikipedia: "Here's what I found on Wikipedia, sir.",
+      image: "I've generated that image for you, sir.",
+      define: "Here's the definition, sir.",
+      qrcode: "QR code generated, sir.",
+      code: "Here's the code you requested, sir.",
+    };
+    quickReply = defaults[toolResult.type] || "Here are the results, sir.";
+  }
+
   if (quickReply && toolResult) {
     return res.status(200).json({ reply: quickReply, tool: toolResult });
   }
