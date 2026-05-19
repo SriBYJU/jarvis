@@ -1,13 +1,13 @@
-import { chatCompletionStream } from "../../lib/llm";
+import { chatCompletionStream, sanitizeReply } from "../../lib/llm";
 
 export const config = { api: { bodyParser: true } };
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { messages, systemPrompt } = req.body;
+  const { messages, systemPrompt, mode, model } = req.body;
 
-  const result = await chatCompletionStream(messages, systemPrompt);
+  const result = await chatCompletionStream(messages, systemPrompt, mode || "fast", model || null);
   if (!result) {
     return res.status(500).json({ error: "Streaming not available — no API keys configured" });
   }
@@ -42,7 +42,8 @@ export default async function handler(req, res) {
             const parsed = JSON.parse(data);
             const token = parsed.choices?.[0]?.delta?.content;
             if (token) {
-              res.write(`data: ${JSON.stringify({ token })}\n\n`);
+              const clean = sanitizeReply(token);
+              if (clean) res.write(`data: ${JSON.stringify({ token: clean })}\n\n`);
             }
           } catch {
             // skip malformed chunks

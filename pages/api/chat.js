@@ -29,7 +29,7 @@ function extractLearningFacts(userMsg, aiReply) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const { messages, systemPrompt, userId } = req.body;
+  const { messages, systemPrompt, userId, mode, model: specificModel } = req.body;
   const lastMsg = messages[messages.length - 1]?.content || "";
   const { intent, data } = detectIntent(lastMsg);
 
@@ -230,7 +230,7 @@ export default async function handler(req, res) {
     (isCodeRequest ? " Write clean well-commented code." : "");
 
   try {
-    const { reply } = await chatCompletion(messages, fullSystemPrompt);
+    const { reply, model: usedModel } = await chatCompletion(messages, fullSystemPrompt, mode || "fast", specificModel || null);
 
     // Learn from the conversation
     try {

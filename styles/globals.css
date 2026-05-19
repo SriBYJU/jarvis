@@ -34,6 +34,41 @@ html, body { height: 100%; overflow: hidden; background: #04070f; color: #e0e8f0
 
 .status-dot { width: 8px; height: 8px; border-radius: 50%; }
 
+/* ── Mode Toggle ─────────────────────────────────────────────────── */
+.mode-toggle { display: flex; border: 1px solid rgba(126,207,255,0.15); border-radius: 20px; overflow: hidden; }
+.mode-btn { background: transparent; border: none; color: rgba(126,207,255,0.5); padding: 5px 12px; font-size: 10px; cursor: pointer;
+  letter-spacing: 1px; font-weight: 600; transition: all 0.3s; }
+.mode-btn.active { color: #3aff1a; background: rgba(58,255,26,0.1); }
+.mode-btn:hover:not(.active) { color: #7ecfff; background: rgba(126,207,255,0.05); }
+
+/* ── Model Picker ────────────────────────────────────────────────── */
+.model-picker-wrapper { position: relative; }
+.model-picker-btn { background: transparent; border: 1px solid rgba(126,207,255,0.15); color: #7ecfff; padding: 5px 12px;
+  border-radius: 20px; font-size: 10px; cursor: pointer; letter-spacing: 0.5px; transition: all 0.3s; max-width: 120px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-picker-btn:hover { border-color: #7ecfff; background: rgba(126,207,255,0.05); }
+.model-dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: rgba(4,7,15,0.97); border: 1px solid rgba(126,207,255,0.2);
+  border-radius: 10px; min-width: 280px; max-height: 350px; overflow-y: auto; z-index: 200; backdrop-filter: blur(16px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6); }
+.model-option { padding: 8px 14px; cursor: pointer; font-size: 11px; transition: background 0.2s; border-bottom: 1px solid rgba(126,207,255,0.05); }
+.model-option:hover { background: rgba(126,207,255,0.08); }
+.model-option:last-child { border-bottom: none; }
+
+/* ── Upload Button ───────────────────────────────────────────────── */
+.upload-btn { background: rgba(126,207,255,0.1); border: 1px solid rgba(126,207,255,0.2); color: #7ecfff; width: 40px; height: 40px;
+  border-radius: 10px; cursor: pointer; font-size: 22px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
+.upload-btn:hover { background: rgba(126,207,255,0.2); }
+
+/* ── File Banner ─────────────────────────────────────────────────── */
+.file-banner { padding: 6px 16px; background: rgba(126,207,255,0.08); border-top: 1px solid rgba(126,207,255,0.1);
+  font-size: 12px; color: #7ecfff; display: flex; align-items: center; }
+
+/* ── Model Label ─────────────────────────────────────────────────── */
+.model-label { font-size: 9px; letter-spacing: 1px; opacity: 0.25; margin-top: 6px; text-align: center; color: #7ecfff; }
+
+/* ── Bubble Model Tag ────────────────────────────────────────────── */
+.bubble-model { font-size: 9px; opacity: 0.25; margin-top: 4px; color: #7ecfff; }
+
 /* ── Body Layout ─────────────────────────────────────────────────── */
 .jarvis-body { flex: 1; display: flex; overflow: hidden; position: relative; }
 
