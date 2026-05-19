@@ -468,24 +468,24 @@ function useReminderChecker(addSystemMessage) {
 
 /* ── Intent Detection (client-side — decides tool vs chat routing) ─ */
 const TOOL_TRIGGERS = [
-  { keywords: ["weather", "temperature", "forecast"], match: /(?:weather|temperature|forecast|rain|snow|humid)\s+(?:in|at|for|of)\s+/i },
-  { keywords: ["map of", "show me map", "where is", "navigate to", "directions to", "location of"] },
-  { keywords: ["play", "youtube"], match: /(?:play|youtube)\s+/i },
+  { keywords: ["weather", "temperature", "forecast"], match: /(?:weather|temperature|forecast|rain|snow|humid|how(?:'s|s|\s+is)\s+(?:the\s+)?(?:weather|temperature)|what(?:'s|s|\s+is)\s+(?:the\s+)?(?:weather|temperature|forecast)|(?:is\s+it|gonna|going\s+to)\s+(?:rain|snow)|(?:hot|cold|warm|chilly|freezing)\s+(?:in|outside))/i },
+  { keywords: ["map of", "show me map", "where is", "navigate to", "directions to", "location of", "pull up a map", "show me where"] },
+  { keywords: ["youtube", "play a video", "play me a video", "find a video", "find me a video", "show me a video", "watch a video"], match: /(?:play|youtube|watch|find\s+(?:me\s+)?(?:a\s+)?video|show\s+(?:me\s+)?(?:a\s+)?video)\s+/i },
   { keywords: ["set a timer", "set timer", "timer for", "countdown"] },
   { keywords: ["remind me", "set a reminder", "reminder to"] },
   { keywords: ["translate"], match: /translate\s+/i },
   { keywords: ["convert"], match: /convert\s+\d/i },
   { keywords: ["currency", "usd to", "eur to", "gbp to", "how much is"] },
-  { keywords: ["world clock", "world clocks", "time in", "what time"] },
-  { keywords: ["tell me a joke", "joke", "make me laugh"] },
-  { keywords: ["stock price", "stock of", "how is", "share price"], match: /(?:stock|share|price)\s+(?:of|for|price)\s+/i },
-  { keywords: ["news", "headlines", "latest news", "breaking news", "top stories", "local news"] },
+  { keywords: ["world clock", "world clocks", "time in", "what time is it in", "what time is it over in"], match: /what\s+time\s+is\s+it\s+(?:in|over\s+in)/i },
+  { keywords: ["tell me a joke", "joke", "make me laugh", "know any jokes", "got a joke", "something funny", "say something funny", "cheer me up", "make me smile"] },
+  { keywords: ["stock price", "stock of", "share price", "check the stock", "check stocks"], match: /(?:stock|share|price)\s+(?:of|for|price)\s+|how(?:'s|s|\s+is)\s+\w+\s+(?:stock|doing\s+(?:in|on)\s+the)|check\s+(?:the\s+)?(?:stock|stocks)\s+(?:on|for|of)/i },
+  { keywords: ["news", "headlines", "latest news", "breaking news", "top stories", "local news", "catch me up", "what's happening", "what is happening", "what's going on", "what is going on", "pull up some news", "show me news", "get me news", "any news"] },
   { keywords: ["search for", "search the web", "google", "look up", "find information"] },
   { keywords: ["browse", "open url", "visit", "go to http", "read this page"] },
   { keywords: ["generate image", "create image", "draw", "imagine", "picture of", "image of"] },
   { keywords: ["wiki", "wikipedia", "tell me about"] },
-  { keywords: ["calculate", "calc", "compute", "math", "evaluate", "what is"], match: /(?:calculate|calc|compute|eval)\s+[\d]/i },
-  { keywords: ["define", "definition of", "meaning of", "what does .+ mean"] },
+  { keywords: ["calculate", "calc", "compute", "math", "evaluate"], match: /(?:calculate|calc|compute|eval)\s+[\d]/i },
+  { keywords: ["define", "definition of", "meaning of"], match: /(?:define|definition\s+of|meaning\s+of|what\s+does\s+\w+\s+mean)/i },
   { keywords: ["qr code", "generate qr", "qrcode"] },
   { keywords: ["start project", "create project", "new project", "begin project"] },
   { keywords: ["show my projects", "list projects", "my projects"] },
@@ -496,7 +496,11 @@ const TOOL_TRIGGERS = [
 ];
 
 function shouldUseTool(text) {
-  const lower = text.toLowerCase();
+  const lower = text.toLowerCase().trim();
+  // Short casual messages should always go to chat
+  if (lower.length < 12 && /^(hey|hi|hello|sup|yo|thanks|thank you|ok|okay|sure|yes|no|maybe|good|great|cool|nice|wow|huh|lol|haha|bye|goodbye|gn|gm|morning|night|what'?s up|how are you|how you doing)\.?!?$/i.test(lower)) return false;
+  // "what's happening" alone is chat, but "what's happening in the news" is tools
+  if (/^what(?:'s|s|\s+is)\s+(?:happening|going\s+on)\s*[?.!]*$/i.test(lower)) return false;
   for (const trigger of TOOL_TRIGGERS) {
     if (trigger.match && trigger.match.test(lower)) return true;
     if (trigger.keywords.some(kw => lower.includes(kw))) return true;
