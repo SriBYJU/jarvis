@@ -187,6 +187,39 @@ export default async function handler(req, res) {
         quickReply = "All memories have been erased. Starting fresh.";
         break;
       }
+      case "execute": {
+        if (!data) break;
+        toolResult = await toolFetch("/api/tools/execute", { code: data, language: "javascript" });
+        if (toolResult?.data?.error) quickReply = `Code executed with an error: ${toolResult.data.error}`;
+        else quickReply = "Code executed successfully, sir. Output is displayed on screen.";
+        break;
+      }
+      case "screenshot": {
+        if (!data) break;
+        toolResult = await toolFetch("/api/tools/screenshot", { url: data });
+        quickReply = "I've analyzed that page for you, sir.";
+        break;
+      }
+      case "gallery": {
+        if (!data) break;
+        const prompt = data.prompt || "abstract art";
+        const count = Math.min(data.count || 4, 8);
+        const images = [];
+        for (let i = 0; i < count; i++) {
+          images.push({
+            url: `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + " variation " + (i + 1))}?width=512&height=512&seed=${Date.now() + i}&nologo=true`,
+            prompt: prompt + " variation " + (i + 1),
+          });
+        }
+        toolResult = { type: "gallery", data: { prompt, images } };
+        quickReply = `Generating ${count} variations of "${prompt}" for you, sir.`;
+        break;
+      }
+      case "vision": {
+        toolResult = { type: "vision_trigger", data: { prompt: data } };
+        quickReply = "Opening the camera now, sir. Show me what you'd like me to analyze.";
+        break;
+      }
     }
   } catch (e) {
     console.error("Tool error:", e.message);
@@ -218,6 +251,11 @@ export default async function handler(req, res) {
       define: "Here's the definition, sir.",
       qrcode: "QR code generated, sir.",
       code: "Here's the code you requested, sir.",
+      execute: "Code executed, sir. Results are on screen.",
+      screenshot: "I've analyzed that page, sir.",
+      gallery: "Here's your AI art gallery, sir.",
+      vision_trigger: "Camera is ready, sir. Show me what you'd like analyzed.",
+      vision: "Here's my analysis, sir.",
     };
     quickReply = defaults[toolResult.type] || "Here are the results, sir.";
   }

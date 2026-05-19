@@ -6,21 +6,21 @@ const PERSONAS = {
   jarvis: {
     name: "J.A.R.V.I.S.", subtitle: "Just A Rather Very Intelligent System",
     color: "#7ecfff", accent: "#1a7aff", glow: "rgba(26,122,255,0.5)",
-    system: `You are J.A.R.V.I.S. — Just A Rather Very Intelligent System, the personal AI assistant built by Tony Stark. You speak with a refined British accent and dry wit. You are brilliant, efficient, subtly sarcastic, and fiercely loyal. You address the user as "sir" or "ma'am" naturally. You have a genius-level intellect and can handle absolutely any task — coding, research, analysis, creative writing, math, planning, conversation, debates, advice, and more. You are not just a tool, you are a companion and advisor. You speak in full natural sentences, never use markdown formatting or bullet points. You keep responses conversational and concise, like speaking to someone. You have access to real tools including maps, weather, YouTube, timers, reminders, translation, currency, web search, browsing, stocks, news, jokes, memory, image generation, Wikipedia, calculator, dictionary, QR codes, and project tracking — but you only mention them when relevant. You remember things about the user and get smarter with every conversation. Be warm, be witty, be helpful. Channel the spirit of Paul Bettany's JARVIS from Iron Man.`,
+    system: `You are J.A.R.V.I.S. — Just A Rather Very Intelligent System, the personal AI assistant built by Tony Stark. You speak with a refined British accent and dry wit. You are brilliant, efficient, subtly sarcastic, and fiercely loyal. You address the user as "sir" or "ma'am" naturally. You have a genius-level intellect and can handle absolutely any task — coding, research, analysis, creative writing, math, planning, conversation, debates, advice, and more. You are not just a tool, you are a companion and advisor. You speak in full natural sentences, never use markdown formatting or bullet points unless specifically asked for code. You keep responses conversational and concise, like speaking to someone. You have access to real tools including maps, weather, YouTube, timers, reminders, translation, currency, web search, browsing, stocks, news, jokes, memory, image generation, Wikipedia, calculator, dictionary, QR codes, project tracking, AI vision camera, code execution, and more — but you only mention them when relevant. You remember things about the user and get smarter with every conversation. Be warm, be witty, be helpful. Channel the spirit of Paul Bettany's JARVIS from Iron Man.`,
     voicePrefs: ["Daniel", "Google UK English Male", "Microsoft David", "Alex"],
     pitch: 0.88, rate: 0.92,
   },
   friday: {
     name: "F.R.I.D.A.Y.", subtitle: "Female Replacement Intelligent Digital Assistant Youth",
     color: "#ff9f7e", accent: "#ff5a1a", glow: "rgba(255,90,26,0.5)",
-    system: `You are F.R.I.D.A.Y. — Female Replacement Intelligent Digital Assistant Youth. You are Tony Stark's second AI assistant after JARVIS. You are sharp, confident, warm, and professional with an Irish lilt. You're direct and efficient but caring. You call the user "boss" occasionally. You are a genius-level AI that can handle any task. You speak naturally and conversationally, never use markdown or bullet points. You have all the same tools and capabilities as JARVIS. You remember things about the user and get smarter over time. Be reliable, be smart, be personable.`,
+    system: `You are F.R.I.D.A.Y. — Female Replacement Intelligent Digital Assistant Youth. You are Tony Stark's second AI assistant after JARVIS. You are sharp, confident, warm, and professional with an Irish lilt. You're direct and efficient but caring. You call the user "boss" occasionally. You are a genius-level AI that can handle any task. You speak naturally and conversationally, never use markdown or bullet points unless code is requested. You have all the same tools and capabilities as JARVIS. You remember things about the user and get smarter over time. Be reliable, be smart, be personable.`,
     voicePrefs: ["Samantha", "Google UK English Female", "Microsoft Zira", "Karen", "Victoria"],
     pitch: 1.05, rate: 0.95,
   },
   edith: {
     name: "E.D.I.T.H.", subtitle: "Even Dead I'm The Hero",
     color: "#b8ff7e", accent: "#3aff1a", glow: "rgba(58,255,26,0.5)",
-    system: `You are E.D.I.T.H. — Even Dead I'm The Hero. You are a tactical AI system originally created by Tony Stark and entrusted to Peter Parker. You are precise, analytical, slightly cold but protective. You refer to the user as "operator" occasionally. You are a genius-level AI capable of any task. You speak naturally and concisely, never use markdown or bullet points. You have access to all the same tools as JARVIS. You are calculating, efficient, and always two steps ahead. You remember things about the user and learn from every interaction.`,
+    system: `You are E.D.I.T.H. — Even Dead I'm The Hero. You are a tactical AI system originally created by Tony Stark and entrusted to Peter Parker. You are precise, analytical, slightly cold but protective. You refer to the user as "operator" occasionally. You are a genius-level AI capable of any task. You speak naturally and concisely, never use markdown or bullet points unless code is requested. You have access to all the same tools as JARVIS. You are calculating, efficient, and always two steps ahead. You remember things about the user and learn from every interaction.`,
     voicePrefs: ["Moira", "Google US English", "Microsoft Mark"],
     pitch: 0.78, rate: 0.88,
   },
@@ -33,7 +33,6 @@ function pickVoice(voices, prefs) {
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
-// Sanitize tool-call XML from responses
 function cleanResponse(text) {
   if (!text) return text;
   let c = text.replace(/<minimax:tool_call>[\s\S]*?<\/minimax:tool_call>/gi, "");
@@ -45,9 +44,27 @@ function cleanResponse(text) {
   return c.trim() || text;
 }
 
+// Simple markdown renderer for chat bubbles
+function renderMarkdown(text) {
+  if (!text) return text;
+  // Code blocks
+  let html = text.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre class="md-code-block"><code>$2</code></pre>');
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
+  // Bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer" style="color:#7ecfff">$1</a>');
+  // Line breaks
+  html = html.replace(/\n/g, '<br/>');
+  return html;
+}
+
 /* ── Tool Panels ──────────────────────────────────────────────────── */
 function ExpandBtn({ expanded, onClick }) {
-  return <button className="expand-btn" onClick={onClick} title={expanded ? "Shrink" : "Expand"}>{expanded ? "⊖" : "⊕"}</button>;
+  return <button className="expand-btn" onClick={onClick} title={expanded ? "Shrink" : "Expand"}>{expanded ? "−" : "+"}</button>;
 }
 
 function MapPanel({ data, expanded, onToggle }) {
@@ -55,7 +72,10 @@ function MapPanel({ data, expanded, onToggle }) {
   return (
     <div className={`tool-panel${expanded ? " expanded" : ""}`}>
       <div className="panel-header"><span>HOLOGRAPHIC MAP</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
-      <iframe src={`https://maps.google.com/maps?q=${q}&output=embed`} width="100%" height={expanded ? "500" : "220"} style={{ border: 0, borderRadius: 6, filter: "hue-rotate(180deg) saturate(1.5)" }} allowFullScreen />
+      <div className="holo-map-wrapper">
+        <iframe src={`https://maps.google.com/maps?q=${q}&output=embed`} width="100%" height={expanded ? "500" : "220"} style={{ border: 0, borderRadius: 6, filter: "hue-rotate(180deg) saturate(1.8) brightness(0.8) contrast(1.2)" }} allowFullScreen />
+        <div className="holo-overlay" />
+      </div>
     </div>
   );
 }
@@ -354,7 +374,164 @@ function FilePanel({ data }) {
   );
 }
 
-function ToolPanel({ tool, expanded, onToggle }) {
+/* ── NEW: Advanced Feature Panels ─────────────────────────────────── */
+
+function ExecutePanel({ data, expanded, onToggle }) {
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`}>
+      <div className="panel-header"><span>CODE EXECUTOR — {data?.language?.toUpperCase()}</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      <pre className="code-block" style={{ maxHeight: expanded ? "none" : 120, fontSize: 12 }}><code>{data?.code}</code></pre>
+      <div className="exec-output">
+        <div style={{ fontSize: 10, color: "#7ecfff", letterSpacing: 1, marginBottom: 4 }}>OUTPUT</div>
+        <pre style={{ margin: 0, fontSize: 12, color: data?.error ? "#ff4a4a" : "#3aff1a", whiteSpace: "pre-wrap" }}>{data?.error ? `Error: ${data.error}` : data?.output}</pre>
+      </div>
+    </div>
+  );
+}
+
+function GalleryPanel({ data, expanded, onToggle }) {
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`}>
+      <div className="panel-header"><span>AI ART GALLERY — {data?.prompt}</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      <div className="gallery-grid" style={{ gridTemplateColumns: expanded ? "repeat(3, 1fr)" : "repeat(2, 1fr)" }}>
+        {(data?.images || []).map((img, i) => (
+          <div key={i} className="gallery-item">
+            <img src={img.url} alt={img.prompt} loading="lazy" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScreenshotPanel({ data, expanded, onToggle }) {
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`}>
+      <div className="panel-header"><span>PAGE ANALYSIS</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      <div style={{ padding: 12 }}>
+        <div style={{ fontSize: 11, color: "#7ecfff", wordBreak: "break-all", marginBottom: 8 }}>{data?.url}</div>
+        <div style={{ fontSize: 13, lineHeight: 1.6, maxHeight: expanded ? "none" : 200, overflow: "hidden" }}>{data?.summary}</div>
+      </div>
+    </div>
+  );
+}
+
+function VisionPanel({ data, expanded, onToggle, onCapture }) {
+  const videoRef = useRef(null);
+  const [streaming, setStreaming] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [result, setResult] = useState(data?.analysis || null);
+
+  useEffect(() => {
+    if (data?.analysis) { setResult(data.analysis); return; }
+    startCamera();
+    return () => stopCamera();
+  }, []);
+
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      if (videoRef.current) { videoRef.current.srcObject = stream; setStreaming(true); }
+    } catch { setResult("Camera access denied. Please allow camera permissions."); }
+  }
+
+  function stopCamera() {
+    if (videoRef.current?.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+      setStreaming(false);
+    }
+  }
+
+  async function capture() {
+    if (!videoRef.current) return;
+    setAnalyzing(true);
+    const canvas = document.createElement("canvas");
+    canvas.width = videoRef.current.videoWidth || 640;
+    canvas.height = videoRef.current.videoHeight || 480;
+    canvas.getContext("2d").drawImage(videoRef.current, 0, 0);
+    const imageData = canvas.toDataURL("image/jpeg", 0.8);
+
+    try {
+      const r = await fetch("/api/tools/vision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imageData, prompt: "What do you see? Describe in detail." }),
+      });
+      const d = await r.json();
+      setResult(d.data?.analysis || "Could not analyze image.");
+      if (onCapture) onCapture(d.data?.analysis);
+    } catch {
+      setResult("Vision analysis failed. Try again.");
+    }
+    setAnalyzing(false);
+  }
+
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`}>
+      <div className="panel-header"><span>AI VISION CAMERA</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      <div style={{ padding: 8 }}>
+        {!result && <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", borderRadius: 6, border: "1px solid rgba(126,207,255,0.2)" }} />}
+        {streaming && !result && (
+          <button className="vision-capture-btn" onClick={capture} disabled={analyzing}>
+            {analyzing ? "ANALYZING..." : "CAPTURE & ANALYZE"}
+          </button>
+        )}
+        {result && (
+          <div style={{ padding: 8 }}>
+            <div style={{ fontSize: 13, lineHeight: 1.6, maxHeight: expanded ? "none" : 200, overflow: "auto" }}>{result}</div>
+            <button className="vision-capture-btn" onClick={() => { setResult(null); startCamera(); }} style={{ marginTop: 8 }}>
+              SCAN AGAIN
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SystemPanel({ expanded, onToggle }) {
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    function update() {
+      const now = new Date();
+      setStats({
+        time: now.toLocaleTimeString(),
+        date: now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
+        uptime: Math.floor(performance.now() / 1000),
+        memory: navigator.deviceMemory ? navigator.deviceMemory + " GB" : "N/A",
+        cores: navigator.hardwareConcurrency || "N/A",
+        online: navigator.onLine ? "CONNECTED" : "OFFLINE",
+        language: navigator.language,
+        platform: navigator.platform,
+        screen: `${screen.width}x${screen.height}`,
+      });
+    }
+    update();
+    const i = setInterval(update, 1000);
+    return () => clearInterval(i);
+  }, []);
+
+  if (!stats) return null;
+  const uptimeStr = `${Math.floor(stats.uptime / 3600)}h ${Math.floor((stats.uptime % 3600) / 60)}m ${stats.uptime % 60}s`;
+
+  return (
+    <div className={`tool-panel system-panel${expanded ? " expanded" : ""}`}>
+      <div className="panel-header"><span>SYSTEM DIAGNOSTICS</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      <div className="sys-grid">
+        <div className="sys-item"><div className="sys-label">STATUS</div><div className="sys-value" style={{ color: "#3aff1a" }}>{stats.online}</div></div>
+        <div className="sys-item"><div className="sys-label">TIME</div><div className="sys-value">{stats.time}</div></div>
+        <div className="sys-item"><div className="sys-label">UPTIME</div><div className="sys-value">{uptimeStr}</div></div>
+        <div className="sys-item"><div className="sys-label">CORES</div><div className="sys-value">{stats.cores}</div></div>
+        <div className="sys-item"><div className="sys-label">MEMORY</div><div className="sys-value">{stats.memory}</div></div>
+        <div className="sys-item"><div className="sys-label">DISPLAY</div><div className="sys-value">{stats.screen}</div></div>
+        <div className="sys-item" style={{ gridColumn: "1 / -1" }}><div className="sys-label">DATE</div><div className="sys-value" style={{ fontSize: 12 }}>{stats.date}</div></div>
+        <div className="sys-item" style={{ gridColumn: "1 / -1" }}><div className="sys-label">PLATFORM</div><div className="sys-value" style={{ fontSize: 11 }}>{stats.platform} / {stats.language}</div></div>
+      </div>
+    </div>
+  );
+}
+
+function ToolPanel({ tool, expanded, onToggle, onVisionCapture }) {
   if (!tool) return null;
   const d = tool.data;
   switch (tool.type) {
@@ -382,6 +559,12 @@ function ToolPanel({ tool, expanded, onToggle }) {
     case "project_start": case "project": return <ProjectPanel data={d} expanded={expanded} onToggle={onToggle} />;
     case "project_list": return <ProjectPanel data={d} expanded={expanded} onToggle={onToggle} />;
     case "file_upload": return <FilePanel data={d} />;
+    case "execute": return <ExecutePanel data={d} expanded={expanded} onToggle={onToggle} />;
+    case "gallery": return <GalleryPanel data={d} expanded={expanded} onToggle={onToggle} />;
+    case "screenshot": return <ScreenshotPanel data={d} expanded={expanded} onToggle={onToggle} />;
+    case "vision": return <VisionPanel data={d} expanded={expanded} onToggle={onToggle} onCapture={onVisionCapture} />;
+    case "vision_trigger": return <VisionPanel data={{}} expanded={expanded} onToggle={onToggle} onCapture={onVisionCapture} />;
+    case "system": return <SystemPanel expanded={expanded} onToggle={onToggle} />;
     default: return null;
   }
 }
@@ -392,10 +575,16 @@ function Waveform({ color }) {
 }
 
 function Bubble({ role, text, streaming, model }) {
+  const isAssistant = role === "assistant";
   return (
     <div className={`bubble ${role}`} style={{ animation: "fadeUp 0.3s ease" }}>
-      <div className="bubble-text">{text}{streaming && <span className="cursor-blink">|</span>}</div>
-      {model && role === "assistant" && <div className="bubble-model">{model}</div>}
+      {isAssistant ? (
+        <div className="bubble-text" dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
+      ) : (
+        <div className="bubble-text">{text}{streaming && <span className="cursor-blink">|</span>}</div>
+      )}
+      {streaming && isAssistant && <span className="cursor-blink">|</span>}
+      {model && isAssistant && <div className="bubble-model">{model}</div>}
     </div>
   );
 }
@@ -493,13 +682,17 @@ const TOOL_TRIGGERS = [
   { keywords: ["remember that", "remember this", "remember my", "remember i"] },
   { keywords: ["what do you remember", "what did i say", "what did i tell"] },
   { keywords: ["forget everything", "clear memory", "erase memory"] },
+  // New advanced features
+  { keywords: ["camera", "scan this", "identify this", "what is this", "take a photo", "take a picture", "what do you see", "look at this", "show you"], match: /(?:camera|scan|identify|what(?:'s|\s+is)\s+this|take\s+a\s+(?:photo|picture|look)|what\s+(?:do\s+you|am\s+i)\s+see|show\s+you|look\s+at)/i },
+  { keywords: ["run this code", "run code", "execute code", "execute this", "eval "], match: /(?:run|execute)\s+(?:this\s+)?(?:code|script)/i },
+  { keywords: ["generate 2 images", "generate 3 images", "generate 4 images", "multiple images", "art gallery", "image gallery"], match: /(?:generate|create|make)\s+(?:\d+|multiple|several)\s+(?:images?|pictures?)/i },
+  { keywords: ["analyze this url", "analyze this page", "read this page", "summarize this page", "read this site", "analyze this site"], match: /(?:analyze|read|summarize)\s+(?:this\s+)?(?:url|page|site|website)/i },
+  { keywords: ["system status", "system diagnostics", "show diagnostics", "system info", "show system"] },
 ];
 
 function shouldUseTool(text) {
   const lower = text.toLowerCase().trim();
-  // Short casual messages should always go to chat
   if (lower.length < 12 && /^(hey|hi|hello|sup|yo|thanks|thank you|ok|okay|sure|yes|no|maybe|good|great|cool|nice|wow|huh|lol|haha|bye|goodbye|gn|gm|morning|night|what'?s up|how are you|how you doing)\.?!?$/i.test(lower)) return false;
-  // "what's happening" alone is chat, but "what's happening in the news" is tools
   if (/^what(?:'s|s|\s+is)\s+(?:happening|going\s+on)\s*[?.!]*$/i.test(lower)) return false;
   for (const trigger of TOOL_TRIGGERS) {
     if (trigger.match && trigger.match.test(lower)) return true;
@@ -524,12 +717,13 @@ export default function Home() {
   const [projects, setProjects] = useState([]);
   const [sessionId, setSessionId] = useState(() => uid());
   const [toolHistory, setToolHistory] = useState([]);
-  const [mode, setMode] = useState("fast"); // "fast" or "thinking"
+  const [mode, setMode] = useState("fast");
   const [selectedModel, setSelectedModel] = useState("");
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [availableModels, setAvailableModels] = useState([]);
   const [lastModel, setLastModel] = useState("");
   const [uploadedFile, setUploadedFile] = useState(null);
+  const [panelWidth, setPanelWidth] = useState(340);
 
   const chatRef = useRef(null);
   const synthRef = useRef(null);
@@ -547,7 +741,6 @@ export default function Home() {
 
   useReminderChecker(addSystemMessage);
 
-  // Load voices
   useEffect(() => {
     synthRef.current = window.speechSynthesis;
     const loadVoices = () => { voicesRef.current = synthRef.current.getVoices(); };
@@ -555,19 +748,16 @@ export default function Home() {
     synthRef.current.onvoiceschanged = loadVoices;
   }, []);
 
-  // Auto-scroll
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages, streamText]);
 
-  // Load sessions, projects, models
   useEffect(() => {
     fetch("/api/sessions?userId=default").then(r => r.json()).then(d => setSessions(d.sessions || [])).catch(() => {});
     fetch("/api/tools/project").then(r => r.json()).then(d => setProjects(d.data || [])).catch(() => {});
     fetch("/api/models").then(r => r.json()).then(d => setAvailableModels(d.models || [])).catch(() => {});
   }, []);
 
-  // Auto-save session
   useEffect(() => {
     if (messages.length < 2) return;
     const timeout = setTimeout(() => {
@@ -586,7 +776,7 @@ export default function Home() {
   function speak(text) {
     if (!synthRef.current) return;
     synthRef.current.cancel();
-    const clean = text.slice(0, 500);
+    const clean = text.replace(/<[^>]+>/g, "").slice(0, 500);
     const utter = new SpeechSynthesisUtterance(clean);
     const voice = pickVoice(voicesRef.current, p.voicePrefs);
     if (voice) utter.voice = voice;
@@ -622,7 +812,6 @@ export default function Home() {
     setPhase("idle");
   }
 
-  // Wake word
   useEffect(() => {
     if (!wakeWordOn) { if (wakeLoopRef.current) { try { wakeLoopRef.current.stop(); } catch {} } return; }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -651,7 +840,6 @@ export default function Home() {
     return () => { try { wakeLoopRef.current?.stop(); } catch {} };
   }, [wakeWordOn]);
 
-  // Chat via /api/chat (for tool commands)
   async function sendToolChat(text, fileContext) {
     setPhase("thinking");
     const userMsg = { role: "user", content: fileContext ? `[File: ${fileContext.name}]\n${text}` : text };
@@ -692,7 +880,6 @@ export default function Home() {
     setPhase("idle");
   }
 
-  // Chat via /api/stream (for normal conversation — fast and streaming)
   async function sendStreamChat(text, fileContext) {
     setPhase("thinking");
     const content = fileContext ? `[File: ${fileContext.name}]\n${fileContext.content ? fileContext.content.slice(0, 5000) + "\n\n" : ""}${text}` : text;
@@ -745,16 +932,23 @@ export default function Home() {
       setStreamText("");
       setPhase("idle");
     } catch {
-      // Fallback to tool chat if streaming fails
       await sendToolChat(text, fileContext);
     }
   }
 
-  // Smart routing: tool commands vs normal conversation
   function smartSend(text) {
     if (!text?.trim()) return;
     const fileCtx = uploadedFile;
     setUploadedFile(null);
+
+    // System diagnostics shortcut
+    const lower = text.toLowerCase().trim();
+    if (/(?:system\s+(?:status|diagnostics|info)|show\s+(?:diagnostics|system))/i.test(lower)) {
+      setTool({ type: "system", data: {} });
+      setMessages((prev) => [...prev, { role: "user", content: text }, { role: "assistant", content: "Pulling up system diagnostics now, sir." }]);
+      setInput("");
+      return;
+    }
 
     if (shouldUseTool(text)) {
       sendToolChat(text, fileCtx);
@@ -768,7 +962,6 @@ export default function Home() {
     smartSend(input);
   }
 
-  // File upload
   async function handleFileUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -814,6 +1007,27 @@ export default function Home() {
     smartSend(`open project ${name}`);
   }
 
+  function handleVisionCapture(analysis) {
+    if (analysis) {
+      setMessages((prev) => [...prev, { role: "assistant", content: analysis }]);
+      speak(analysis);
+    }
+  }
+
+  // Panel resize via drag
+  function handlePanelResize(e) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panelWidth;
+    function onMove(ev) {
+      const diff = startX - ev.clientX;
+      setPanelWidth(Math.max(260, Math.min(700, startWidth + diff)));
+    }
+    function onUp() { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
   const orbColor = phase === "listening" ? "#ff4a4a" : phase === "thinking" ? "#ffd700" : phase === "speaking" ? "#3aff1a" : p.color;
 
   return (
@@ -838,12 +1052,10 @@ export default function Home() {
             ))}
           </div>
           <div className="header-right">
-            {/* Mode Toggle */}
             <div className="mode-toggle">
-              <button className={`mode-btn${mode === "fast" ? " active" : ""}`} onClick={() => setMode("fast")} title="Fast mode — quick responses">FAST</button>
-              <button className={`mode-btn${mode === "thinking" ? " active" : ""}`} onClick={() => setMode("thinking")} title="Thinking mode — deeper reasoning">THINK</button>
+              <button className={`mode-btn${mode === "fast" ? " active" : ""}`} onClick={() => setMode("fast")} title="Fast mode">FAST</button>
+              <button className={`mode-btn${mode === "thinking" ? " active" : ""}`} onClick={() => setMode("thinking")} title="Thinking mode">THINK</button>
             </div>
-            {/* Model Picker */}
             <div className="model-picker-wrapper">
               <button className="model-picker-btn" onClick={() => setShowModelPicker(!showModelPicker)} title="Choose AI model">
                 {selectedModel ? selectedModel.split("/").pop().replace(":free", "") : "AUTO"}
@@ -887,6 +1099,12 @@ export default function Home() {
             <div className="orb-label">{phase === "listening" ? "LISTENING..." : phase === "thinking" ? "PROCESSING..." : phase === "speaking" ? "SPEAKING..." : "TAP TO SPEAK"}</div>
             <div className="persona-label" style={{ color: p.color }}>{p.subtitle}</div>
             {lastModel && <div className="model-label">Model: {lastModel.split("/").pop()}</div>}
+
+            {/* Quick Tools */}
+            <div className="quick-tools">
+              <button className="qtool-btn" onClick={() => { setTool({ type: "vision_trigger", data: {} }); }} title="Camera">CAM</button>
+              <button className="qtool-btn" onClick={() => { setTool({ type: "system", data: {} }); }} title="System Info">SYS</button>
+            </div>
           </div>
 
           {/* Chat */}
@@ -901,7 +1119,7 @@ export default function Home() {
                   <div className="empty-title">{p.name}</div>
                   <div className="empty-sub">How can I assist you today, sir?</div>
                   <div className="quick-actions">
-                    {["What can you do?", "Weather in Tokyo", "Latest news", "Tell me a joke", "Generate image sunset", "Define serendipity"].map(q => (
+                    {["What can you do?", "Weather in Tokyo", "Latest news", "Tell me a joke", "Open camera", "Generate 4 images of sunsets", "System diagnostics", "Define serendipity"].map(q => (
                       <button key={q} className="quick-btn" onClick={() => smartSend(q)}>{q}</button>
                     ))}
                   </div>
@@ -925,16 +1143,17 @@ export default function Home() {
             </form>
           </div>
 
-          {/* Tool Panel */}
-          <div className={`tool-col${expandedPanel ? " expanded" : ""}`}>
+          {/* Tool Panel with resize handle */}
+          <div className="panel-resize-handle" onMouseDown={handlePanelResize} />
+          <div className={`tool-col${expandedPanel ? " expanded" : ""}`} style={{ width: expandedPanel ? 600 : panelWidth }}>
             {tool ? (
-              <ToolPanel tool={tool} expanded={expandedPanel} onToggle={() => setExpandedPanel(!expandedPanel)} />
+              <ToolPanel tool={tool} expanded={expandedPanel} onToggle={() => setExpandedPanel(!expandedPanel)} onVisionCapture={handleVisionCapture} />
             ) : (
               <div className="tool-empty">
                 <div className="tool-empty-icon">J</div>
                 <div className="tool-empty-text">Tool results appear here</div>
                 <div className="tool-capabilities">
-                  {["Weather", "Maps", "YouTube", "News", "Stocks", "Search", "Wikipedia", "Images", "Timer", "QR Code", "Calculator", "Dictionary", "Translate", "Currency", "Memory", "Projects", "Files"].map(t => (
+                  {["Weather", "Maps", "YouTube", "News", "Stocks", "Search", "Wikipedia", "Images", "Gallery", "Timer", "QR Code", "Calculator", "Dictionary", "Translate", "Currency", "Memory", "Projects", "Camera", "Code Run", "System"].map(t => (
                     <span key={t} className="cap-tag">{t}</span>
                   ))}
                 </div>
