@@ -292,3 +292,7 @@ html, body { height: 100%; overflow: hidden; background: #04070f; color: #e0e8f0
   .jarvis-header .header-center { gap: 2px; }
   .persona-btn { padding: 4px 8px; font-size: 10px; }
 }
+
+/* Stop buttons */
+.stop-btn { padding: 6px 10px; background: rgba(255,74,74,0.1); border: 1px solid rgba(255,74,74,0.3); border-radius: 6px; color: #ff4a4a; font-size: 11px; font-family: inherit; letter-spacing: 1px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.stop-btn:hover { background: rgba(255,74,74,0.2); }
