@@ -12,7 +12,7 @@ import {
 async function toolWeather(location) {
   const apiKey = process.env.OPENWEATHER_API_KEY;
   if (!apiKey) return null;
-  const resp = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(location)}&appid=${apiKey}&units=metric`);
+  const resp = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(location)}&appid=${apiKey}&units=imperial`);
   if (!resp.ok) return null;
   const d = await resp.json();
   return {
@@ -256,6 +256,16 @@ async function toolBrowse(url) {
   } catch { return null; }
 }
 
+async function toolScreenshot(url) {
+  try {
+    const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 JARVIS Bot" }, signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) return null;
+    const html = await resp.text();
+    const text = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000);
+    return { type: "screenshot", data: { url, summary: text.slice(0, 500), rawText: text.slice(0, 1000) } };
+  } catch { return null; }
+}
+
 function toolReminder(data) {
   const { task, type, time, seconds } = data;
   let fireAt;
@@ -387,6 +397,12 @@ export default async function handler(req, res) {
         break;
       case "browse":
         if (data) toolResult = await toolBrowse(data);
+        break;
+      case "screenshot":
+        if (data) {
+          toolResult = await toolScreenshot(data);
+          quickReply = "I've analyzed that page for you, sir.";
+        }
         break;
       case "map":
         toolResult = { type: "map", data: { query: data || "Richmond Virginia" } };
