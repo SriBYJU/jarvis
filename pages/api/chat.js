@@ -2,7 +2,7 @@ import { detectIntent } from "../../lib/intent";
 import { chatCompletion } from "../../lib/llm";
 import { addMemory, searchMemories, clearMemories, addProject, getProjects, getProject, getLearningContext, addLearningFact } from "../../lib/store";
 
-const BASE = () => process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+const BASE = () => process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
 
 async function toolFetch(path, body) {
   const opts = body
