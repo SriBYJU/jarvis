@@ -166,9 +166,9 @@ function ConvertPanel({ data }) {
     <div className="tool-panel">
       <div className="panel-header"><span>CONVERSION</span></div>
       <div style={{ textAlign: "center", padding: 16 }}>
-        <div style={{ fontSize: 24 }}>{data?.input}</div>
+        <div style={{ fontSize: 24 }}>{data?.value} {data?.from}</div>
         <div style={{ color: "#7ecfff", margin: "8px 0" }}>=</div>
-        <div style={{ fontSize: 28, color: "#3aff1a" }}>{data?.output}</div>
+        <div style={{ fontSize: 28, color: "#3aff1a" }}>{data?.result} {data?.to}</div>
       </div>
     </div>
   );
@@ -178,7 +178,7 @@ function WorldClockPanel({ data, expanded, onToggle }) {
   return (
     <div className={`tool-panel${expanded ? " expanded" : ""}`}>
       <div className="panel-header"><span>WORLD CLOCKS</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
-      <div className="clock-grid">{(Array.isArray(data) ? data : data?.clocks || []).map((c, i) => (
+      <div className="clock-grid">{(Array.isArray(data) ? data : []).map((c, i) => (
         <div key={i} className="clock-cell"><div style={{ fontSize: 11, opacity: 0.6 }}>{c.label || c.city}</div><div style={{ fontSize: 16, color: "#7ecfff" }}>{c.time}</div></div>
       ))}</div>
     </div>
@@ -550,7 +550,7 @@ function ToolPanel({ tool, expanded, onToggle, onVisionCapture }) {
     case "websearch": return <WebSearchPanel data={d} expanded={expanded} onToggle={onToggle} />;
     case "browse": return <BrowsePanel data={d} expanded={expanded} onToggle={onToggle} />;
     case "reminder": return <ReminderPanel data={d} />;
-    case "memory_save": case "memory_query": return <MemoryPanel data={d} />;
+    case "memory_save": case "memory_query": case "memory_clear": return <MemoryPanel data={d} />;
     case "image": return <ImagePanel data={d} expanded={expanded} onToggle={onToggle} />;
     case "wikipedia": return <WikiPanel data={d} expanded={expanded} onToggle={onToggle} />;
     case "calculate": return <CalcPanel data={d} />;
@@ -638,9 +638,10 @@ function useReminderChecker(addSystemMessage) {
       try {
         const r = await fetch("/api/tools/reminder");
         if (!r.ok) return;
-        const { active } = await r.json();
+        const json = await r.json();
+        const active = json.data || json.active || [];
         const now = Date.now();
-        for (const rem of (active || [])) {
+        for (const rem of active) {
           if (rem.fireAt && new Date(rem.fireAt).getTime() <= now) {
             await fetch("/api/tools/reminder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "fire", id: rem.id }) });
             addSystemMessage(`Reminder: ${rem.task}`);
@@ -732,6 +733,8 @@ export default function Home() {
   const wakeLoopRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const abortRef = useRef(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const p = PERSONAS[persona];
 
@@ -782,9 +785,22 @@ export default function Home() {
     if (voice) utter.voice = voice;
     utter.pitch = p.pitch;
     utter.rate = p.rate;
-    utter.onstart = () => setPhase("speaking");
-    utter.onend = () => setPhase("idle");
+    utter.onstart = () => { setPhase("speaking"); setIsSpeaking(true); };
+    utter.onend = () => { setPhase("idle"); setIsSpeaking(false); };
+    utter.onerror = () => { setPhase("idle"); setIsSpeaking(false); };
     synthRef.current.speak(utter);
+  }
+
+  function stopSpeaking() {
+    if (synthRef.current) synthRef.current.cancel();
+    setIsSpeaking(false);
+    setPhase("idle");
+  }
+
+  function stopGenerating() {
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+    setStreamText("");
+    setPhase("idle");
   }
 
   function startListening() {
@@ -847,6 +863,7 @@ export default function Home() {
     setInput("");
 
     try {
+      abortRef.current = new AbortController();
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -857,6 +874,7 @@ export default function Home() {
           mode,
           model: selectedModel || undefined,
         }),
+        signal: abortRef.current.signal,
       });
       const data = await res.json();
 
@@ -888,6 +906,7 @@ export default function Home() {
     setInput("");
 
     try {
+      abortRef.current = new AbortController();
       const res = await fetch("/api/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -897,6 +916,7 @@ export default function Home() {
           mode,
           model: selectedModel || undefined,
         }),
+        signal: abortRef.current.signal,
       });
 
       if (!res.ok) throw new Error("Stream failed");
@@ -1102,8 +1122,8 @@ export default function Home() {
 
             {/* Quick Tools */}
             <div className="quick-tools">
-              <button className="qtool-btn" onClick={() => { setTool({ type: "vision_trigger", data: {} }); }} title="Camera">CAM</button>
-              <button className="qtool-btn" onClick={() => { setTool({ type: "system", data: {} }); }} title="System Info">SYS</button>
+              <button className="qtool-btn" onClick={() => { const t = { type: "vision_trigger", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }} title="Camera">CAM</button>
+              <button className="qtool-btn" onClick={() => { const t = { type: "system", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }} title="System Info">SYS</button>
             </div>
           </div>
 
@@ -1140,14 +1160,29 @@ export default function Home() {
               <button type="button" className="mic-btn" onClick={() => phase === "listening" ? stopListening() : startListening()} style={{ color: phase === "listening" ? "#ff4a4a" : p.color }}>
                 {phase === "listening" ? "||" : "MIC"}
               </button>
+              {phase === "thinking" && (
+                <button type="button" className="stop-btn" onClick={stopGenerating} title="Stop generating">&#9632; STOP</button>
+              )}
+              {isSpeaking && (
+                <button type="button" className="stop-btn" onClick={stopSpeaking} title="Stop speaking" style={{ background: "rgba(58,255,26,0.1)", borderColor: "rgba(58,255,26,0.3)", color: "#3aff1a" }}>&#9632; MUTE</button>
+              )}
             </form>
           </div>
 
           {/* Tool Panel with resize handle */}
           <div className="panel-resize-handle" onMouseDown={handlePanelResize} />
           <div className={`tool-col${expandedPanel ? " expanded" : ""}`} style={{ width: expandedPanel ? 600 : panelWidth }}>
-            {tool ? (
-              <ToolPanel tool={tool} expanded={expandedPanel} onToggle={() => setExpandedPanel(!expandedPanel)} onVisionCapture={handleVisionCapture} />
+            {toolHistory.length > 0 ? (
+              <>
+                {toolHistory.length > 1 && (
+                  <button className="tool-history-item" style={{ marginBottom: 4, color: "#ff4a4a", borderColor: "rgba(255,74,74,0.2)" }} onClick={() => { setToolHistory([]); setTool(null); }}>
+                    CLEAR ALL PANELS
+                  </button>
+                )}
+                {toolHistory.slice(0, 6).map((t, i) => (
+                  <ToolPanel key={i} tool={t} expanded={i === 0 && expandedPanel} onToggle={() => setExpandedPanel(i === 0 ? !expandedPanel : false)} onVisionCapture={handleVisionCapture} />
+                ))}
+              </>
             ) : (
               <div className="tool-empty">
                 <div className="tool-empty-icon">J</div>
@@ -1157,16 +1192,6 @@ export default function Home() {
                     <span key={t} className="cap-tag">{t}</span>
                   ))}
                 </div>
-              </div>
-            )}
-            {toolHistory.length > 1 && (
-              <div className="tool-history">
-                <div className="tool-history-label">Recent Tools</div>
-                {toolHistory.slice(1, 5).map((t, i) => (
-                  <button key={i} className="tool-history-item" onClick={() => { setTool(t); setExpandedPanel(false); }}>
-                    {t.type}
-                  </button>
-                ))}
               </div>
             )}
           </div>
