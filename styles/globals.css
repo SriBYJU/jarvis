@@ -296,3 +296,198 @@ html, body { height: 100%; overflow: hidden; background: #04070f; color: #e0e8f0
 /* Stop buttons */
 .stop-btn { padding: 6px 10px; background: rgba(255,74,74,0.1); border: 1px solid rgba(255,74,74,0.3); border-radius: 6px; color: #ff4a4a; font-size: 11px; font-family: inherit; letter-spacing: 1px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
 .stop-btn:hover { background: rgba(255,74,74,0.2); }
+
+/* ── Agent Mode ──────────────────────────────────────────────────── */
+.agent-status-panel {
+  margin: 0 16px 8px;
+  background: rgba(255,215,0,0.04);
+  border: 1px solid rgba(255,215,0,0.15);
+  border-radius: 10px;
+  overflow: hidden;
+  animation: fadeUp 0.3s ease;
+}
+.agent-status-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255,215,0,0.06);
+  border-bottom: 1px solid rgba(255,215,0,0.1);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: #ffd700;
+}
+.agent-icon { font-size: 14px; }
+.agent-spinner {
+  width: 10px; height: 10px;
+  border: 1.5px solid rgba(255,215,0,0.3);
+  border-top-color: #ffd700;
+  border-radius: 50%;
+  animation: spinCW 0.7s linear infinite;
+  margin-left: auto;
+}
+.agent-status-text {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: rgba(255,215,0,0.6);
+  letter-spacing: 0.5px;
+}
+.agent-steps {
+  padding: 6px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.agent-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+  transition: all 0.3s;
+}
+.agent-step-icon { font-size: 11px; width: 14px; flex-shrink: 0; }
+.agent-step-pending { color: rgba(255,255,255,0.3); }
+.agent-step-running { color: #ffd700; }
+.agent-step-running .agent-step-icon { animation: pulseGlow 1s infinite; }
+.agent-step-done { color: rgba(58,255,26,0.7); text-decoration: none; }
+
+/* Agent input glow */
+.agent-input {
+  border-color: rgba(255,215,0,0.3) !important;
+  background: rgba(255,215,0,0.03) !important;
+  box-shadow: 0 0 12px rgba(255,215,0,0.08);
+}
+.agent-input:focus {
+  border-color: rgba(255,215,0,0.6) !important;
+  box-shadow: 0 0 20px rgba(255,215,0,0.15) !important;
+}
+
+/* Agent orb effects */
+.orb-agent .orb-core {
+  animation: agentPulse 1.5s ease-in-out infinite !important;
+}
+.orb-agent-ring {
+  position: absolute;
+  inset: -30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,215,0,0.3);
+  animation: agentRingExpand 2s ease-out infinite;
+}
+.ring-4 {
+  inset: 24px;
+  animation: spinCCW 6s linear infinite;
+  border-style: dashed;
+  opacity: 0.3;
+}
+
+/* Orb phase enhancements */
+.orb-thinking .orb-ring { animation-duration: 3s !important; }
+.orb-speaking .orb-core { animation: speakPulse 0.4s ease-in-out infinite alternate !important; }
+.orb-listening .orb-core { animation: listenPulse 0.8s ease-in-out infinite alternate !important; }
+
+/* Better panel animations */
+.tool-panel {
+  animation: panelSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Glassmorphism panel upgrade */
+.tool-panel {
+  background: linear-gradient(135deg, rgba(126,207,255,0.05) 0%, rgba(4,7,15,0.6) 100%);
+  border: 1px solid rgba(126,207,255,0.14);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(126,207,255,0.08);
+}
+.tool-panel:hover {
+  border-color: rgba(126,207,255,0.22);
+  box-shadow: 0 4px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(126,207,255,0.12);
+}
+
+/* Panel header gradient */
+.panel-header {
+  background: linear-gradient(90deg, rgba(126,207,255,0.08) 0%, transparent 100%);
+  border-bottom: 1px solid rgba(126,207,255,0.1);
+}
+
+/* Glowing orb idle state */
+@keyframes agentPulse {
+  0%, 100% { box-shadow: 0 0 40px #ffd700, 0 0 80px rgba(255,215,0,0.4), 0 0 120px rgba(255,215,0,0.2); }
+  50% { box-shadow: 0 0 60px #ffd700, 0 0 120px rgba(255,215,0,0.6), 0 0 160px rgba(255,215,0,0.3); }
+}
+@keyframes agentRingExpand {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+@keyframes speakPulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
+}
+@keyframes listenPulse {
+  from { transform: scale(0.96); }
+  to { transform: scale(1.04); }
+}
+@keyframes panelSlideIn {
+  from { opacity: 0; transform: translateX(16px) scale(0.98); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+/* Bubble upgrade */
+.bubble.assistant {
+  background: linear-gradient(135deg, rgba(58,255,26,0.06) 0%, rgba(4,7,15,0.4) 100%);
+  border: 1px solid rgba(58,255,26,0.12);
+  backdrop-filter: blur(4px);
+}
+.bubble.user {
+  background: linear-gradient(135deg, rgba(126,207,255,0.12) 0%, rgba(26,122,255,0.06) 100%);
+  border: 1px solid rgba(126,207,255,0.18);
+}
+
+/* Mobile: show tool panel as overlay sheet */
+@media (max-width: 600px) {
+  .tool-col {
+    display: flex !important;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    width: 100% !important;
+    height: 40vh;
+    border-top: 1px solid rgba(126,207,255,0.15);
+    background: rgba(4,7,15,0.97);
+    backdrop-filter: blur(16px);
+    z-index: 40;
+    overflow-y: auto;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    padding: 8px;
+    gap: 8px;
+  }
+  .tool-col .tool-panel { min-width: 280px; flex-shrink: 0; }
+  .tool-col .tool-empty { display: none; }
+  .chat-col { padding-bottom: 40vh; }
+  .agent-status-panel { margin: 0 8px 8px; }
+}
+
+/* AGENT button styling */
+.mode-toggle .mode-btn:last-child {
+  border-left: 1px solid rgba(126,207,255,0.1);
+}
+
+/* CLEAR ALL button upgrade */
+.agent-clear-btn {
+  display: block; width: 100%;
+  padding: 6px 10px;
+  background: rgba(255,74,74,0.06);
+  border: 1px solid rgba(255,74,74,0.15);
+  border-radius: 6px;
+  color: rgba(255,74,74,0.6);
+  font-size: 10px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 6px;
+  text-align: center;
+}
+.agent-clear-btn:hover {
+  background: rgba(255,74,74,0.12);
+  color: #ff4a4a;
+  border-color: rgba(255,74,74,0.3);
+}
