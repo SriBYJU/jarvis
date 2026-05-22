@@ -735,6 +735,11 @@ export default function Home() {
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [agentMode, setAgentMode] = useState(false);
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentSteps, setAgentSteps] = useState([]);
+  const [agentStatus, setAgentStatus] = useState("");
+  const [agentPlan, setAgentPlan] = useState(null);
 
   const p = PERSONAS[persona];
 
@@ -800,6 +805,83 @@ export default function Home() {
   function stopGenerating() {
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     setStreamText("");
+    setPhase("idle");
+  }
+
+  async function sendAgentChat(text) {
+    setPhase("thinking");
+    setAgentRunning(true);
+    setAgentSteps([]);
+    setAgentPlan(null);
+    setAgentStatus("Initializing agent...");
+    const userMsg = { role: "user", content: text };
+    setMessages(prev => [...prev, userMsg]);
+    setInput("");
+
+    try {
+      abortRef.current = new AbortController();
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, systemPrompt: p.system, userId: "default", mode }),
+        signal: abortRef.current.signal,
+      });
+
+      if (!res.ok) throw new Error("Agent failed");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "status") setAgentStatus(event.text);
+            else if (event.type === "plan") {
+              setAgentPlan({ taskName: event.taskName, steps: event.steps });
+              setAgentSteps(event.steps.map(s => ({ text: s, status: "pending" })));
+            }
+            else if (event.type === "step") {
+              setAgentSteps(prev => prev.map((s, i) => i === event.index ? { ...s, status: "running" } : i < event.index ? { ...s, status: "done" } : s));
+            }
+            else if (event.type === "tool") {
+              setTool(event.tool);
+              setToolHistory(prev => [event.tool, ...prev].slice(0, 20));
+              setAgentSteps(prev => prev.map((s, i) => {
+                const running = prev.findIndex(x => x.status === "running");
+                return i === running ? { ...s, status: "done" } : s;
+              }));
+            }
+            else if (event.type === "reply") {
+              const cleaned = cleanResponse(event.text);
+              setMessages(prev => [...prev, { role: "assistant", content: cleaned, model: event.model }]);
+              setLastModel(event.model || "");
+              speak(cleaned);
+              setAgentSteps(prev => prev.map(s => ({ ...s, status: "done" })));
+            }
+            else if (event.type === "done") {
+              setAgentStatus("Complete");
+              setTimeout(() => { setAgentStatus(""); setAgentPlan(null); setAgentSteps([]); }, 3000);
+            }
+            else if (event.type === "error") {
+              setMessages(prev => [...prev, { role: "assistant", content: event.text }]);
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      if (e.name !== "AbortError") {
+        setMessages(prev => [...prev, { role: "assistant", content: "Agent encountered an issue. Falling back to standard mode." }]);
+        await sendToolChat(text);
+      }
+    }
+    setAgentRunning(false);
     setPhase("idle");
   }
 
@@ -970,7 +1052,9 @@ export default function Home() {
       return;
     }
 
-    if (shouldUseTool(text)) {
+    if (agentMode) {
+      sendAgentChat(text);
+    } else if (shouldUseTool(text)) {
       sendToolChat(text, fileCtx);
     } else {
       sendStreamChat(text, fileCtx);
@@ -1076,6 +1160,14 @@ export default function Home() {
               <button className={`mode-btn${mode === "fast" ? " active" : ""}`} onClick={() => setMode("fast")} title="Fast mode">FAST</button>
               <button className={`mode-btn${mode === "thinking" ? " active" : ""}`} onClick={() => setMode("thinking")} title="Thinking mode">THINK</button>
             </div>
+            <button
+              className={`mode-btn${agentMode ? " active" : ""}`}
+              onClick={() => setAgentMode(a => !a)}
+              title="Agent mode — JARVIS chains multiple tools autonomously"
+              style={{ borderLeft: "1px solid rgba(126,207,255,0.1)", color: agentMode ? "#ffd700" : undefined, background: agentMode ? "rgba(255,215,0,0.08)" : undefined }}
+            >
+              AGENT
+            </button>
             <div className="model-picker-wrapper">
               <button className="model-picker-btn" onClick={() => setShowModelPicker(!showModelPicker)} title="Choose AI model">
                 {selectedModel ? selectedModel.split("/").pop().replace(":free", "") : "AUTO"}
@@ -1106,17 +1198,24 @@ export default function Home() {
 
           {/* Orb */}
           <div className="orb-col">
-            <div className="orb-container" onClick={() => phase === "listening" ? stopListening() : startListening()}>
+            <div
+              className={`orb-container${phase === "thinking" ? " orb-thinking" : phase === "speaking" ? " orb-speaking" : phase === "listening" ? " orb-listening" : ""}${agentRunning ? " orb-agent" : ""}`}
+              onClick={() => phase === "listening" ? stopListening() : startListening()}
+            >
               <div className="orb-ring ring-1" style={{ borderColor: orbColor }} />
               <div className="orb-ring ring-2" style={{ borderColor: orbColor }} />
               <div className="orb-ring ring-3" style={{ borderColor: orbColor }} />
+              <div className="orb-ring ring-4" style={{ borderColor: agentRunning ? "#ffd700" : orbColor }} />
               <div className="orb-core" style={{ background: orbColor, boxShadow: `0 0 40px ${orbColor}, 0 0 80px ${orbColor}40` }}>
                 <div className="orb-inner-glow" />
               </div>
               <div className="orb-pulse" style={{ borderColor: orbColor }} />
+              {agentRunning && <div className="orb-agent-ring" />}
             </div>
             {(phase === "listening" || phase === "speaking") && <Waveform color={orbColor} />}
-            <div className="orb-label">{phase === "listening" ? "LISTENING..." : phase === "thinking" ? "PROCESSING..." : phase === "speaking" ? "SPEAKING..." : "TAP TO SPEAK"}</div>
+            <div className="orb-label">
+              {agentRunning ? "AGENT ACTIVE" : phase === "listening" ? "LISTENING..." : phase === "thinking" ? "PROCESSING..." : phase === "speaking" ? "SPEAKING..." : agentMode ? "AGENT READY" : "TAP TO SPEAK"}
+            </div>
             <div className="persona-label" style={{ color: p.color }}>{p.subtitle}</div>
             {lastModel && <div className="model-label">Model: {lastModel.split("/").pop()}</div>}
 
@@ -1129,6 +1228,26 @@ export default function Home() {
 
           {/* Chat */}
           <div className="chat-col">
+            {(agentRunning || agentSteps.length > 0) && (
+              <div className="agent-status-panel">
+                <div className="agent-status-header">
+                  <span className="agent-icon">⬡</span>
+                  <span>{agentPlan?.taskName || "AGENT PROCESSING"}</span>
+                  {agentRunning && <span className="agent-spinner" />}
+                </div>
+                {agentStatus && <div className="agent-status-text">{agentStatus}</div>}
+                <div className="agent-steps">
+                  {agentSteps.map((step, i) => (
+                    <div key={i} className={`agent-step agent-step-${step.status}`}>
+                      <span className="agent-step-icon">
+                        {step.status === "done" ? "✓" : step.status === "running" ? "◎" : "○"}
+                      </span>
+                      <span>{step.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="chat-messages" ref={chatRef}>
               {messages.map((m, i) => (
                 <Bubble key={i} role={m.role} text={m.content} model={m.model} />
@@ -1155,7 +1274,7 @@ export default function Home() {
             <form className="chat-input-form" onSubmit={handleSubmit}>
               <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display: "none" }} />
               <button type="button" className="upload-btn" onClick={() => fileInputRef.current?.click()} title="Upload file">+</button>
-              <input ref={inputRef} className="chat-input" value={input} onChange={(e) => setInput(e.target.value)} placeholder={`Talk to ${p.name}...`} autoComplete="off" />
+              <input ref={inputRef} className={`chat-input${agentMode ? " agent-input" : ""}`} value={input} onChange={(e) => setInput(e.target.value)} placeholder={agentMode ? `Ask JARVIS to do anything autonomously...` : `Talk to ${p.name}...`} autoComplete="off" />
               <button type="submit" className="send-btn" disabled={!input.trim() || phase === "thinking"}>&#8594;</button>
               <button type="button" className="mic-btn" onClick={() => phase === "listening" ? stopListening() : startListening()} style={{ color: phase === "listening" ? "#ff4a4a" : p.color }}>
                 {phase === "listening" ? "||" : "MIC"}
