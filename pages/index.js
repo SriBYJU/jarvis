@@ -531,6 +531,80 @@ function SystemPanel({ expanded, onToggle }) {
   );
 }
 
+
+function FileDownloadPanel({ data, expanded, onToggle }) {
+  const [downloading, setDownloading] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
+
+  const ICONS = {
+    xlsx: "📊", docx: "📄", pptx: "📑", csv: "📋",
+    json: "{ }", html: "🌐", python: "🐍", javascript: "⚡",
+    markdown: "📝", txt: "📃",
+  };
+  const COLORS = {
+    xlsx: "#1e7e34", docx: "#1a5a9e", pptx: "#c85a00",
+    csv: "#2e7d32", json: "#7b1fa2", html: "#e65100",
+    python: "#3d6b9e", javascript: "#f59f00", markdown: "#455a64", txt: "#546e7a",
+  };
+
+  const icon = ICONS[data?.fileType] || "📄";
+  const color = COLORS[data?.fileType] || "#7ecfff";
+  const sizeStr = data?.size > 1024 * 1024
+    ? (data.size / (1024 * 1024)).toFixed(1) + " MB"
+    : (data?.size / 1024).toFixed(1) + " KB";
+
+  function download() {
+    if (!data?.base64) return;
+    setDownloading(true);
+    try {
+      const byteChars = atob(data.base64);
+      const byteNums = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([byteNums], { type: data.mime || "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = data.filename || "jarvis-file";
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+      setDownloaded(true);
+      setTimeout(() => setDownloaded(false), 3000);
+    } catch (e) { console.error("Download failed:", e); }
+    setDownloading(false);
+  }
+
+  return (
+    <div className={`tool-panel file-download-panel${expanded ? " expanded" : ""}`}>
+      <div className="panel-header" style={{ borderColor: color + "30" }}>
+        <span style={{ color }}>{icon} {data?.label || "Generated File"}</span>
+        <ExpandBtn expanded={expanded} onClick={onToggle} />
+      </div>
+      <div style={{ padding: 16 }}>
+        <div className="file-dl-name" style={{ color }}>{data?.filename}</div>
+        <div className="file-dl-meta">{data?.label} • ~{sizeStr}</div>
+        {data?.prompt && (
+          <div className="file-dl-prompt">{data.prompt}</div>
+        )}
+        <button
+          className="file-dl-btn"
+          onClick={download}
+          disabled={downloading}
+          style={{ background: color + "18", borderColor: color + "40", color }}
+        >
+          {downloading ? "Preparing..." : downloaded ? "✓ Downloaded!" : `⬇ Download ${data?.filename}`}
+        </button>
+        {expanded && data?.base64 && (data?.fileType === "html" || data?.fileType === "markdown" || data?.fileType === "txt" || data?.fileType === "python" || data?.fileType === "javascript" || data?.fileType === "json" || data?.fileType === "csv") && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 10, color: "#7ecfff", letterSpacing: 1, marginBottom: 6 }}>PREVIEW</div>
+            <pre className="code-block" style={{ maxHeight: 300, fontSize: 11, overflow: "auto" }}>
+              {atob(data.base64).slice(0, 3000)}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ToolPanel({ tool, expanded, onToggle, onVisionCapture }) {
   if (!tool) return null;
   const d = tool.data;
@@ -565,6 +639,7 @@ function ToolPanel({ tool, expanded, onToggle, onVisionCapture }) {
     case "vision": return <VisionPanel data={d} expanded={expanded} onToggle={onToggle} onCapture={onVisionCapture} />;
     case "vision_trigger": return <VisionPanel data={{}} expanded={expanded} onToggle={onToggle} onCapture={onVisionCapture} />;
     case "system": return <SystemPanel expanded={expanded} onToggle={onToggle} />;
+    case "file_download": return <FileDownloadPanel data={d} expanded={expanded} onToggle={onToggle} />;
     default: return null;
   }
 }
@@ -689,6 +764,11 @@ const TOOL_TRIGGERS = [
   { keywords: ["generate 2 images", "generate 3 images", "generate 4 images", "multiple images", "art gallery", "image gallery"], match: /(?:generate|create|make)\s+(?:\d+|multiple|several)\s+(?:images?|pictures?)/i },
   { keywords: ["analyze this url", "analyze this page", "read this page", "summarize this page", "read this site", "analyze this site"], match: /(?:analyze|read|summarize)\s+(?:this\s+)?(?:url|page|site|website)/i },
   { keywords: ["system status", "system diagnostics", "show diagnostics", "system info", "show system"] },
+  { keywords: ["generate a file", "create a file", "make a file", "generate an excel", "create an excel",
+    "generate a spreadsheet", "create a spreadsheet", "generate a word", "create a word doc",
+    "generate a powerpoint", "create a presentation", "make a presentation", "generate a report",
+    "create a report", "generate a csv", "create a csv", "make me a file", "write me a script",
+    "generate python", "generate javascript", "create html", "make html"], match: /(?:generate|create|make|write)\s+(?:a\s+|an\s+|me\s+a\s+)?(?:excel|xlsx|spreadsheet|word\s+doc|docx|powerpoint|pptx|presentation|csv|json\s+file|html\s+(?:file|page)|python\s+(?:script|file)|javascript\s+(?:script|file)|markdown\s+(?:doc|file)|text\s+file|report|script)/i },
 ];
 
 function shouldUseTool(text) {
@@ -1258,7 +1338,7 @@ export default function Home() {
                   <div className="empty-title">{p.name}</div>
                   <div className="empty-sub">How can I assist you today, sir?</div>
                   <div className="quick-actions">
-                    {["What can you do?", "Weather in Tokyo", "Latest news", "Tell me a joke", "Open camera", "Generate 4 images of sunsets", "System diagnostics", "Define serendipity"].map(q => (
+                    {["What can you do?", "Weather in Tokyo", "Latest news", "Create an Excel report on S&P 500 stocks", "Generate a PowerPoint on AI trends", "Open camera", "Create a Python web scraper script", "Define serendipity"].map(q => (
                       <button key={q} className="quick-btn" onClick={() => smartSend(q)}>{q}</button>
                     ))}
                   </div>
