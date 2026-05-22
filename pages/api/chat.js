@@ -227,6 +227,33 @@ function toolImage(prompt) {
   return { type: "image", data: { prompt, url: `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true` } };
 }
 
+async function toolGenerateFile(prompt, fileType) {
+  // Detect file type from prompt if not specified
+  if (!fileType) {
+    const p = prompt.toLowerCase();
+    if (p.match(/excel|xlsx|spreadsheet/)) fileType = "xlsx";
+    else if (p.match(/word|docx|document/)) fileType = "docx";
+    else if (p.match(/powerpoint|pptx|presentation|slides/)) fileType = "pptx";
+    else if (p.match(/csv/)) fileType = "csv";
+    else if (p.match(/json/)) fileType = "json";
+    else if (p.match(/html|webpage|web page/)) fileType = "html";
+    else if (p.match(/python|\.py/)) fileType = "python";
+    else if (p.match(/javascript|\.js|node/)) fileType = "javascript";
+    else if (p.match(/markdown|\.md/)) fileType = "markdown";
+    else if (p.match(/report|document|doc/)) fileType = "docx";
+    else fileType = "txt";
+  }
+  try {
+    const resp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/tools/generate-file`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileType, prompt }),
+    });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch { return null; }
+}
+
 function toolExecute(code, language) {
   if (language === "python") {
     return { type: "execute", data: { code, language: "python", output: "Python runs client-side via Pyodide.", error: null } };
@@ -323,6 +350,17 @@ export default async function handler(req, res) {
   let toolResult = null;
   let quickReply = null;
 
+  // File generation override — check before intent switch
+  const fileGenMatch = lastMsg.match(/(?:generate|create|make|write)\s+(?:a\s+|an\s+|me\s+a\s+)?(?:excel|xlsx|spreadsheet|word\s+(?:doc|document)|docx|powerpoint|pptx|presentation|csv\s+(?:file)?|json\s+file|html\s+(?:file|page)|python\s+(?:script|file)|javascript\s+(?:script|file)|node\.?js|markdown\s+(?:doc|file)|\.md|text\s+file|report\s+(?:on|about))/i);
+  if (fileGenMatch) {
+    const result = await toolGenerateFile(lastMsg, null);
+    if (result) {
+      toolResult = result;
+      quickReply = `Your ${result.data?.label || "file"} is ready to download, sir.`;
+      return res.status(200).json({ reply: quickReply, tool: toolResult });
+    }
+  }
+
   try {
     switch (intent) {
       case "weather":
@@ -398,6 +436,17 @@ export default async function handler(req, res) {
       case "browse":
         if (data) toolResult = await toolBrowse(data);
         break;
+      case "file_generate": {
+        const p = lastMsg;
+        const fileMatch = p.match(/(?:generate|create|make|write)\s+(?:a\s+|an\s+|me\s+a\s+)?(?:(excel|xlsx|spreadsheet|word\s+doc|docx|powerpoint|pptx|presentation|csv|json|html|python|javascript|markdown|txt|text\s+file|report))/i);
+        const fileType = fileMatch ? fileMatch[1].toLowerCase().replace(/\s+/g, "") : null;
+        const result = await toolGenerateFile(p, fileType);
+        if (result) {
+          toolResult = result;
+          quickReply = `Your ${result.data?.label || "file"} is ready to download, sir.`;
+        }
+        break;
+      }
       case "screenshot":
         if (data) {
           toolResult = await toolScreenshot(data);
