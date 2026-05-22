@@ -57,6 +57,16 @@ async function runTool(intent, data) {
       }
       case "map": return { type: "map", data: { query: data || "Richmond Virginia" } };
       case "image": return { type: "image", data: { prompt: data, url: `https://image.pollinations.ai/prompt/${encodeURIComponent(data)}?width=512&height=512&nologo=true` } };
+      case "file_generate": {
+        if (!data) return null;
+        const resp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/tools/generate-file`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: data, fileType: null }),
+        });
+        if (!resp.ok) return null;
+        return await resp.json();
+      }
       default: return null;
     }
   } catch { return null; }
@@ -66,7 +76,7 @@ async function runTool(intent, data) {
 
 const PLAN_SYSTEM = `You are a task planner for JARVIS AI. Given a user request, output a JSON plan with steps.
 Each step has: { "action": "tool"|"llm", "intent"?: string, "data"?: string, "description": string }
-Available tool intents: weather, stock, news, websearch, wikipedia, memory_save, memory_query, map, image
+Available tool intents: weather, stock, news, websearch, wikipedia, memory_save, memory_query, map, image, file_generate
 For "llm" steps, include "prompt" instead of intent/data.
 Output ONLY valid JSON like: { "taskName": "...", "steps": [...] }
 Keep steps minimal (2-5 max). Only use tools when genuinely needed.`;
@@ -139,6 +149,7 @@ export default async function handler(req, res) {
           else if (result.type === "websearch") contextSummary += `Search results: ${result.data.slice(0, 3).map(r => r.title + ": " + r.snippet).join("; ")}\n`;
           else if (result.type === "wikipedia") contextSummary += `Wikipedia: ${result.data.extract?.slice(0, 300)}\n`;
           else if (result.type === "memory_query") contextSummary += `Memory: ${result.data.map(m => m.content).join("; ")}\n`;
+          else if (result.type === "file_download") contextSummary += `Generated file: ${result.data?.filename} (${result.data?.label})\n`;
         }
       } else if (step.action === "llm") {
         // LLM synthesis step
