@@ -711,6 +711,193 @@ function ScreenSharePanel({ data, expanded, onToggle }) {
   );
 }
 
+function CompanionActionPanel({ action, data, expanded, onToggle }) {
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function execute() {
+    setLoading(true);
+    setError(null);
+    try {
+      let res;
+      switch (action) {
+        case "open_app":
+          res = await fetch("http://localhost:3003/open-app", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data?.type === "url" ? { url: data.target } : { app: data?.target }),
+          });
+          break;
+        case "list_files":
+          res = await fetch("http://localhost:3003/files", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "list", filePath: data?.path || "~" }),
+          });
+          break;
+        case "run_local":
+          res = await fetch("http://localhost:3003/execute", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code: data?.code, language: "bash" }),
+          });
+          break;
+        default:
+          setError("Unknown companion action");
+          setLoading(false);
+          return;
+      }
+      const d = await res.json();
+      setResult(d);
+    } catch (err) {
+      setError("Companion server not running. Start it with: cd companion && npm start");
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { if (action === "list_files") execute(); }, []);
+
+  const titles = { open_app: "APP LAUNCHER", list_files: "FILE BROWSER", save_file: "FILE SAVER", run_local: "LOCAL EXECUTION" };
+  const colors = { open_app: "#b8ff7e", list_files: "#7ecfff", save_file: "#ff9f7e", run_local: "#ffd700" };
+
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`} style={{ borderColor: `${colors[action]}33` }}>
+      <div className="panel-header"><span>{titles[action]}</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      {error && <div style={{ padding: 10, color: "#ff4a4a", fontSize: 12, background: "rgba(255,74,74,0.1)", borderRadius: 6, marginBottom: 8 }}>{error}</div>}
+      {action === "open_app" && !result && (
+        <button onClick={execute} disabled={loading} style={{ padding: "8px 16px", background: `${colors[action]}18`, border: `1px solid ${colors[action]}50`, color: colors[action], borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>
+          {loading ? "LAUNCHING..." : `LAUNCH ${data?.target?.toUpperCase()}`}
+        </button>
+      )}
+      {action === "run_local" && !result && (
+        <div>
+          <div style={{ padding: 8, background: "rgba(0,0,0,0.3)", borderRadius: 6, marginBottom: 8, fontSize: 12, fontFamily: "monospace", color: "#ffd700" }}>{data?.code}</div>
+          <button onClick={execute} disabled={loading} style={{ padding: "8px 16px", background: "rgba(255,215,0,0.1)", border: "1px solid rgba(255,215,0,0.3)", color: "#ffd700", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>
+            {loading ? "RUNNING..." : "RUN ON LOCAL MACHINE"}
+          </button>
+        </div>
+      )}
+      {result?.ok && action === "list_files" && (
+        <div style={{ maxHeight: 250, overflowY: "auto" }}>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 8 }}>{result.directory}</div>
+          {(result.entries || []).map(e => (
+            <div key={e.name} style={{ padding: "4px 8px", display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}>
+              <span style={{ color: e.type === "directory" ? "#7ecfff" : "rgba(255,255,255,0.7)" }}>{e.type === "directory" ? "[DIR]" : "[FILE]"}</span>
+              <span style={{ color: "rgba(255,255,255,0.9)" }}>{e.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {result?.ok && action === "open_app" && <div style={{ color: "#3aff1a", fontSize: 13, padding: 8 }}>Launched successfully</div>}
+      {result?.ok && action === "run_local" && (
+        <div style={{ marginTop: 8 }}>
+          {result.stdout && <pre style={{ padding: 8, background: "rgba(0,0,0,0.3)", borderRadius: 6, fontSize: 11, color: "#3aff1a", whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto" }}>{result.stdout}</pre>}
+          {result.stderr && <pre style={{ padding: 8, background: "rgba(255,74,74,0.1)", borderRadius: 6, fontSize: 11, color: "#ff4a4a", whiteSpace: "pre-wrap", marginTop: 4 }}>{result.stderr}</pre>}
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>Exit code: {result.exitCode}</div>
+        </div>
+      )}
+      {result && !result.ok && <div style={{ color: "#ff4a4a", fontSize: 12, padding: 8 }}>{result.error}</div>}
+    </div>
+  );
+}
+
+function CompanionTaskPanel({ task, data, expanded, onToggle }) {
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function execute() {
+    setLoading(true);
+    setError(null);
+    try {
+      let body;
+      switch (task) {
+        case "spreadsheet":
+          body = { type: "spreadsheet", data: { title: data?.description || "JARVIS Spreadsheet", headers: data?.headers || ["Item", "Value", "Notes"], rows: data?.rows || [["Example", "1", "Auto-generated by JARVIS"]] } };
+          break;
+        case "document":
+          body = { type: "document", data: { title: data?.description || "JARVIS Document", content: data?.content || "This document was generated by J.A.R.V.I.S.", format: data?.format || "html" } };
+          break;
+        case "organize":
+          body = { type: "organize_files", data: { directory: data?.directory || "~/Downloads" } };
+          break;
+        case "search":
+          body = { type: "search_files", data: { query: data?.query, directory: data?.directory || "~" } };
+          break;
+        case "clipboard":
+          body = { type: "clipboard", data: { action: data?.action || "paste", text: data?.text } };
+          break;
+        default: setError("Unknown task"); setLoading(false); return;
+      }
+      const res = await fetch("http://localhost:3003/task", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      setResult(await res.json());
+    } catch {
+      setError("Companion server not running. Start with: cd companion && npm start");
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { if (task === "search" || task === "organize") execute(); }, []);
+
+  const titles = { spreadsheet: "SPREADSHEET CREATOR", document: "DOCUMENT CREATOR", organize: "FILE ORGANIZER", search: "FILE SEARCH", clipboard: "CLIPBOARD" };
+  const colors = { spreadsheet: "#3aff1a", document: "#7ecfff", organize: "#ffd700", search: "#b8ff7e", clipboard: "#ff9f7e" };
+
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`} style={{ borderColor: `${colors[task]}33` }}>
+      <div className="panel-header"><span>{titles[task]}</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      {error && <div style={{ padding: 10, color: "#ff4a4a", fontSize: 12, background: "rgba(255,74,74,0.1)", borderRadius: 6, marginBottom: 8 }}>{error}</div>}
+      {!result && !loading && (task === "spreadsheet" || task === "document" || task === "clipboard") && (
+        <button onClick={execute} style={{ padding: "8px 16px", background: `${colors[task]}18`, border: `1px solid ${colors[task]}50`, color: colors[task], borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>
+          {task === "spreadsheet" ? "CREATE SPREADSHEET" : task === "document" ? "CREATE DOCUMENT" : data?.action === "paste" ? "PASTE FROM CLIPBOARD" : "COPY TO CLIPBOARD"}
+        </button>
+      )}
+      {loading && <div style={{ color: colors[task], fontSize: 13, padding: 8 }}>Working...</div>}
+      {result?.ok && task === "spreadsheet" && (
+        <div style={{ padding: 8 }}>
+          <div style={{ color: "#3aff1a", fontSize: 13, marginBottom: 4 }}>Spreadsheet created and opened</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{result.path}</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>{result.rows} rows, {result.headers} columns</div>
+        </div>
+      )}
+      {result?.ok && task === "document" && (
+        <div style={{ padding: 8 }}>
+          <div style={{ color: "#7ecfff", fontSize: 13, marginBottom: 4 }}>Document created and opened</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{result.path}</div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 4 }}>Format: {result.format}, Size: {result.size} bytes</div>
+        </div>
+      )}
+      {result?.ok && task === "organize" && (
+        <div style={{ padding: 8 }}>
+          <div style={{ color: "#ffd700", fontSize: 13, marginBottom: 8 }}>Organized {result.totalMoved} files</div>
+          {(result.moved || []).slice(0, 20).map((m, i) => (
+            <div key={i} style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", padding: "2px 0" }}>{m.file} → {m.to}/</div>
+          ))}
+          {!result.moved?.length && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>All files already organized</div>}
+        </div>
+      )}
+      {result?.ok && task === "search" && (
+        <div style={{ padding: 8, maxHeight: 250, overflowY: "auto" }}>
+          <div style={{ color: "#b8ff7e", fontSize: 13, marginBottom: 8 }}>{result.total} file(s) found</div>
+          {(result.results || []).map((f, i) => (
+            <div key={i} style={{ fontSize: 11, color: "rgba(255,255,255,0.8)", padding: "3px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              <span style={{ color: "#7ecfff" }}>{f.name}</span>
+              <span style={{ color: "rgba(255,255,255,0.3)", marginLeft: 8 }}>{(f.size / 1024).toFixed(1)}KB</span>
+            </div>
+          ))}
+          {!result.results?.length && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>No files found</div>}
+        </div>
+      )}
+      {result?.ok && task === "clipboard" && (
+        <div style={{ padding: 8 }}>
+          <div style={{ color: "#ff9f7e", fontSize: 13, marginBottom: 4 }}>{result.action === "pasted" ? "Clipboard content:" : "Copied!"}</div>
+          {result.text && <pre style={{ fontSize: 11, color: "rgba(255,255,255,0.8)", background: "rgba(0,0,0,0.3)", padding: 8, borderRadius: 6, maxHeight: 150, overflowY: "auto", whiteSpace: "pre-wrap" }}>{result.text}</pre>}
+        </div>
+      )}
+      {result && !result.ok && <div style={{ color: "#ff4a4a", fontSize: 12, padding: 8 }}>{result.error}</div>}
+    </div>
+  );
+}
+
 function SystemPanel({ expanded, onToggle }) {
   const [stats, setStats] = useState(null);
   useEffect(() => {
@@ -865,6 +1052,15 @@ function ToolPanel({ tool, expanded, onToggle, onVisionCapture }) {
     case "nutrition": return <NutritionPanel data={d} expanded={expanded} onToggle={onToggle} />;
     case "briefing": return <BriefingPanel data={d} expanded={expanded} onToggle={onToggle} />;
     case "screen_share": return <ScreenSharePanel data={d} expanded={expanded} onToggle={onToggle} />;
+    case "open_app": return <CompanionActionPanel action="open_app" data={d} expanded={expanded} onToggle={onToggle} />;
+    case "list_files": return <CompanionActionPanel action="list_files" data={d} expanded={expanded} onToggle={onToggle} />;
+    case "save_file": return <CompanionActionPanel action="save_file" data={d} expanded={expanded} onToggle={onToggle} />;
+    case "run_local": return <CompanionActionPanel action="run_local" data={d} expanded={expanded} onToggle={onToggle} />;
+    case "make_spreadsheet": return <CompanionTaskPanel task="spreadsheet" data={d} expanded={expanded} onToggle={onToggle} />;
+    case "make_document": return <CompanionTaskPanel task="document" data={d} expanded={expanded} onToggle={onToggle} />;
+    case "organize_files": return <CompanionTaskPanel task="organize" data={d} expanded={expanded} onToggle={onToggle} />;
+    case "search_files": return <CompanionTaskPanel task="search" data={d} expanded={expanded} onToggle={onToggle} />;
+    case "clipboard": return <CompanionTaskPanel task="clipboard" data={d} expanded={expanded} onToggle={onToggle} />;
     default: return null;
   }
 }
@@ -1096,6 +1292,12 @@ export default function Home() {
   const [showThemePicker, setShowThemePicker] = useState(false);
   const automationTimers = useRef({});
 
+  // ── COMPANION SERVER STATE ────────────────────────────────────────
+  const [companionOnline, setCompanionOnline] = useState(false);
+  const [companionInfo, setCompanionInfo] = useState(null);
+  const [ollamaModels, setOllamaModels] = useState([]);
+  const [showCompanion, setShowCompanion] = useState(false);
+
   const p = PERSONAS[persona];
 
   const addSystemMessage = useCallback((text) => {
@@ -1164,6 +1366,73 @@ export default function Home() {
   }
 
   useEffect(() => { fetchLearningFacts(); }, []);
+
+  // ── Companion Server Detection ──────────────────────────────────
+  useEffect(() => {
+    let alive = true;
+    async function checkCompanion() {
+      try {
+        const res = await fetch("http://localhost:3003/health", { signal: AbortSignal.timeout(2000) });
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        if (alive) { setCompanionOnline(true); setCompanionInfo(data); }
+        // Check Ollama models
+        try {
+          const mr = await fetch("http://localhost:3003/ollama/models", { signal: AbortSignal.timeout(2000) });
+          const md = await mr.json();
+          if (alive && md.ok) setOllamaModels(md.models || []);
+        } catch {}
+      } catch {
+        if (alive) { setCompanionOnline(false); setCompanionInfo(null); setOllamaModels([]); }
+      }
+    }
+    checkCompanion();
+    const interval = setInterval(checkCompanion, 15000);
+    return () => { alive = false; clearInterval(interval); };
+  }, []);
+
+  // Companion helper functions
+  async function companionExecute(code, language = "javascript") {
+    if (!companionOnline) return { ok: false, error: "Companion not running" };
+    const res = await fetch("http://localhost:3003/execute", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, language }),
+    });
+    return res.json();
+  }
+
+  async function companionFiles(action, filePath, content) {
+    if (!companionOnline) return { ok: false, error: "Companion not running" };
+    const res = await fetch("http://localhost:3003/files", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, filePath, content }),
+    });
+    return res.json();
+  }
+
+  async function companionScreenshot() {
+    if (!companionOnline) return { ok: false, error: "Companion not running" };
+    const res = await fetch("http://localhost:3003/screenshot");
+    return res.json();
+  }
+
+  async function companionOpenApp(app, url) {
+    if (!companionOnline) return { ok: false, error: "Companion not running" };
+    const res = await fetch("http://localhost:3003/open-app", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ app, url }),
+    });
+    return res.json();
+  }
+
+  async function companionOllama(messages, model = "llama3.2") {
+    if (!companionOnline) return { ok: false, error: "Companion not running" };
+    const res = await fetch("http://localhost:3003/ollama", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages, model, systemPrompt: p.system }),
+    });
+    return res.json();
+  }
 
   useEffect(() => {
     synthRef.current = window.speechSynthesis;
@@ -1484,6 +1753,20 @@ export default function Home() {
         }
       }
     } catch {
+      // Try Ollama via companion as last resort
+      if (companionOnline && ollamaModels.length > 0) {
+        try {
+          const ollamaRes = await companionOllama([...messages, userMsg].filter(m => m.role !== "system").slice(-10));
+          if (ollamaRes.ok && ollamaRes.reply) {
+            const cleaned = cleanResponse(ollamaRes.reply);
+            setMessages((prev) => [...prev, { role: "assistant", content: cleaned, model: `ollama/${ollamaRes.model}`, timestamp: Date.now() }]);
+            setLastModel(`ollama/${ollamaRes.model}`);
+            speak(cleaned);
+            setPhase("idle");
+            return;
+          }
+        } catch {}
+      }
       setMessages((prev) => [...prev, { role: "assistant", content: "I encountered a connection issue, sir. Let me try again." }]);
     }
     setPhase("idle");
@@ -1549,17 +1832,62 @@ export default function Home() {
         setPhase("idle");
       } else {
         setStreamText("");
+        // Try Ollama before falling back to tool chat
+        if (companionOnline && ollamaModels.length > 0) {
+          try {
+            const ollamaRes = await companionOllama([...messages, userMsg].filter(m => m.role !== "system").slice(-10));
+            if (ollamaRes.ok && ollamaRes.reply) {
+              const cleaned = cleanResponse(ollamaRes.reply);
+              setMessages((prev) => [...prev, { role: "assistant", content: cleaned, model: `ollama/${ollamaRes.model}`, timestamp: Date.now() }]);
+              setLastModel(`ollama/${ollamaRes.model}`);
+              speak(cleaned);
+              setPhase("idle");
+              return;
+            }
+          } catch {}
+        }
         await sendToolChat(text, fileContext);
       }
     } catch {
       setStreamText("");
+      // Try Ollama before falling back to tool chat
+      if (companionOnline && ollamaModels.length > 0) {
+        try {
+          const ollamaRes = await companionOllama([...messages, userMsg].filter(m => m.role !== "system").slice(-10));
+          if (ollamaRes.ok && ollamaRes.reply) {
+            const cleaned = cleanResponse(ollamaRes.reply);
+            setMessages((prev) => [...prev, { role: "assistant", content: cleaned, model: `ollama/${ollamaRes.model}`, timestamp: Date.now() }]);
+            setLastModel(`ollama/${ollamaRes.model}`);
+            speak(cleaned);
+            setPhase("idle");
+            return;
+          }
+        } catch {}
+      }
       await sendToolChat(text, fileContext);
     }
   }
 
   // ── Code Playground ─────────────────────────────────────────────
-  function runCodePlayground() {
+  async function runCodePlayground(language = "javascript") {
     setCodePlayground(prev => ({ ...prev, running: true, output: "" }));
+    // If companion is online, use real execution
+    if (companionOnline) {
+      try {
+        const r = await companionExecute(codePlayground.code, language);
+        if (r.ok) {
+          const output = (r.stdout || "") + (r.stderr ? "\nSTDERR: " + r.stderr : "") || "(no output)";
+          setCodePlayground(prev => ({ ...prev, output: output.trim(), running: false }));
+        } else {
+          setCodePlayground(prev => ({ ...prev, output: "Error: " + (r.error || "Execution failed"), running: false }));
+        }
+        return;
+      } catch (e) {
+        setCodePlayground(prev => ({ ...prev, output: "Companion error: " + e.message, running: false }));
+        return;
+      }
+    }
+    // Fallback: browser-only JS eval
     try {
       const logs = [];
       const fakeConsole = { log: (...a) => logs.push(a.map(String).join(" ")), error: (...a) => logs.push("ERROR: " + a.map(String).join(" ")), warn: (...a) => logs.push("WARN: " + a.map(String).join(" ")) };
@@ -1754,6 +2082,63 @@ export default function Home() {
       {isDragging && <div className="drag-overlay"><div className="drag-overlay-inner">Drop file to upload</div></div>}
 
       {/* Voice Command HUD */}
+      {/* Companion Panel */}
+      {showCompanion && (
+        <div className="cmd-palette-overlay" onClick={() => setShowCompanion(false)}>
+          <div className="voice-hud-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="shortcuts-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%", background: companionOnline ? "#3aff1a" : "#ff4a4a", display: "inline-block" }} />
+              Local Companion — {companionOnline ? "ONLINE" : "OFFLINE"}
+            </div>
+            {!companionOnline ? (
+              <div style={{ padding: 20, color: "rgba(255,255,255,0.7)", lineHeight: 1.8 }}>
+                <p style={{ marginBottom: 12 }}>The companion server unlocks local features:</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                  {["Code Execution", "File Manager", "Screen Capture", "App Launcher", "Local LLMs", "System Info"].map(f => (
+                    <div key={f} style={{ padding: "8px 12px", background: "rgba(255,255,255,0.05)", borderRadius: 6, fontSize: 12 }}>{f}</div>
+                  ))}
+                </div>
+                <p style={{ fontSize: 13, color: "#7ecfff" }}>To start:</p>
+                <code style={{ display: "block", padding: "10px 14px", background: "rgba(0,0,0,0.4)", borderRadius: 8, fontSize: 13, color: "#3aff1a", marginTop: 6 }}>
+                  cd companion && npm install && npm start
+                </code>
+              </div>
+            ) : (
+              <div style={{ padding: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                  {(companionInfo?.capabilities || []).map(cap => (
+                    <div key={cap} style={{ padding: "8px 12px", background: "rgba(58,255,26,0.08)", border: "1px solid rgba(58,255,26,0.2)", borderRadius: 6, fontSize: 12, color: "#3aff1a", textTransform: "uppercase" }}>{cap}</div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 12 }}>
+                  {companionInfo?.platform} | {companionInfo?.hostname} | uptime: {Math.floor((companionInfo?.uptime || 0) / 60)}m
+                </div>
+                {ollamaModels.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#b8ff7e", marginBottom: 8 }}>Ollama Models</div>
+                    {ollamaModels.map(m => (
+                      <div key={m.name} style={{ padding: "6px 10px", background: "rgba(184,255,126,0.08)", borderRadius: 6, marginBottom: 4, fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
+                        {m.name} — {(m.size / (1024*1024*1024)).toFixed(1)}GB
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {ollamaModels.length === 0 && (
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 8 }}>
+                    Ollama not detected. Install from <a href="https://ollama.com" target="_blank" rel="noreferrer" style={{ color: "#7ecfff" }}>ollama.com</a> for unlimited offline AI.
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+                  <button onClick={async () => { const r = await companionScreenshot(); if (r.ok) { setTool({ type: "screenshot", data: { image: r.image } }); setShowCompanion(false); } }} style={{ padding: "8px 14px", background: "rgba(126,207,255,0.1)", border: "1px solid rgba(126,207,255,0.3)", borderRadius: 8, color: "#7ecfff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>SCREENSHOT</button>
+                  <button onClick={async () => { const r = await companionFiles("list", "~"); if (r.ok) { setMessages(prev => [...prev, { role: "assistant", content: `Home directory (${r.entries.length} items): ${r.entries.slice(0, 15).map(e => `${e.type === "directory" ? "[DIR]" : ""} ${e.name}`).join(", ")}${r.entries.length > 15 ? "..." : ""}` }]); setShowCompanion(false); } }} style={{ padding: "8px 14px", background: "rgba(126,207,255,0.1)", border: "1px solid rgba(126,207,255,0.3)", borderRadius: 8, color: "#7ecfff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>LIST FILES</button>
+                  <button onClick={async () => { const r = await fetch("http://localhost:3003/system-info").then(r => r.json()); if (r.ok) { setMessages(prev => [...prev, { role: "assistant", content: `System: ${r.cpuModel} (${r.cpuCores} cores), RAM: ${Math.round(r.usedMemory/1024/1024/1024)}/${Math.round(r.totalMemory/1024/1024/1024)}GB (${r.memoryUsagePercent}%), ${r.platform} ${r.arch}` }]); setShowCompanion(false); } }} style={{ padding: "8px 14px", background: "rgba(126,207,255,0.1)", border: "1px solid rgba(126,207,255,0.3)", borderRadius: 8, color: "#7ecfff", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>SYS INFO</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showVoiceHUD && (
         <div className="cmd-palette-overlay" onClick={() => setShowVoiceHUD(false)}>
           <div className="voice-hud-modal" onClick={e => e.stopPropagation()}>
@@ -1792,20 +2177,30 @@ export default function Home() {
         <div className="cmd-palette-overlay" onClick={() => setShowCodePlayground(false)}>
           <div className="code-playground-modal" onClick={e => e.stopPropagation()}>
             <div className="playground-header">
-              <span>Code Playground (JavaScript)</span>
+              <span>Code Playground {companionOnline ? "(JS / Python / Bash)" : "(JavaScript)"}</span>
               <button onClick={() => setShowCodePlayground(false)} className="sidebar-close">X</button>
             </div>
             <textarea
               className="playground-editor"
               value={codePlayground.code}
               onChange={e => setCodePlayground(prev => ({ ...prev, code: e.target.value }))}
-              placeholder="// Write JavaScript here...\nconsole.log('Hello JARVIS!');"
+              placeholder={companionOnline ? "// Write code in any language...\nprint('Hello from Python!')" : "// Write JavaScript here...\nconsole.log('Hello JARVIS!');"}
               spellCheck={false}
             />
             <div className="playground-actions">
-              <button className="playground-run" onClick={runCodePlayground} disabled={codePlayground.running}>
-                {codePlayground.running ? "Running..." : "RUN"}
+              <button className="playground-run" onClick={() => runCodePlayground("javascript")} disabled={codePlayground.running}>
+                {codePlayground.running ? "Running..." : companionOnline ? "RUN JS" : "RUN"}
               </button>
+              {companionOnline && (
+                <>
+                  <button className="playground-run" onClick={() => runCodePlayground("python")} disabled={codePlayground.running} style={{ background: "rgba(58,255,26,0.1)", color: "#3aff1a" }}>
+                    RUN PYTHON
+                  </button>
+                  <button className="playground-run" onClick={() => runCodePlayground("bash")} disabled={codePlayground.running} style={{ background: "rgba(255,215,0,0.1)", color: "#ffd700" }}>
+                    RUN BASH
+                  </button>
+                </>
+              )}
               <button className="playground-clear" onClick={() => setCodePlayground({ code: "", output: "", running: false })}>Clear</button>
             </div>
             {codePlayground.output && (
@@ -2125,6 +2520,10 @@ export default function Home() {
               {responseTime && <span className="status-bar-item">{(responseTime / 1000).toFixed(1)}s</span>}
               <span className="status-bar-item" style={{ color: phase === "idle" ? "#3aff1a" : "#ffd700" }}>{phase === "idle" ? "Ready" : phase === "thinking" ? "Processing" : phase === "listening" ? "Listening" : "Speaking"}</span>
               {automations.filter(a => a.active).length > 0 && <span className="status-bar-item" style={{ color: "#ffd700" }}>{automations.filter(a => a.active).length} automations</span>}
+              <button className="status-bar-item" onClick={() => setShowCompanion(!showCompanion)} style={{ background: "none", border: "none", cursor: "pointer", color: companionOnline ? "#3aff1a" : "rgba(255,255,255,0.3)", fontWeight: 600 }} title={companionOnline ? "Companion: ONLINE" : "Companion: OFFLINE — run companion/npm start"}>
+                {companionOnline ? "LOCAL" : "LOCAL"}
+              </button>
+              {companionOnline && ollamaModels.length > 0 && <span className="status-bar-item" style={{ color: "#b8ff7e" }}>Ollama: {ollamaModels.length} models</span>}
               <span className="status-bar-spacer" />
               <button className="status-bar-item status-bar-shortcut" onClick={() => exportConversation("markdown")} title="Export chat" style={{ background: "none", border: "none", cursor: "pointer", color: "inherit" }}>Export</button>
               <span className="status-bar-item status-bar-shortcut">Ctrl+K</span>

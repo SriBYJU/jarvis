@@ -1,0 +1,14 @@
+{
+  "name": "jarvis-companion",
+  "version": "1.0.0",
+  "description": "J.A.R.V.I.S. local companion server — unlocks file access, code execution, screen capture, app launching, and local LLMs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0"
+  }
+}

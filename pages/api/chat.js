@@ -572,6 +572,58 @@ export default async function handler(req, res) {
         toolResult = { type: "screen_share", data: {} };
         quickReply = "Screen sharing panel is ready, sir. Click 'Share Screen' to begin.";
         break;
+      case "open_app":
+        if (data) {
+          toolResult = { type: "open_app", data };
+          quickReply = data.type === "url"
+            ? `Opening ${data.target} now, sir. This requires the companion server to be running locally.`
+            : `Launching ${data.target}, sir. Make sure the companion server is running on port 3003.`;
+        }
+        break;
+      case "list_files":
+        toolResult = { type: "list_files", data: { path: data || "~" } };
+        quickReply = `Listing files in ${data || "your home directory"}, sir. This requires the companion server.`;
+        break;
+      case "save_file":
+        if (data) {
+          toolResult = { type: "save_file", data: { path: data } };
+          quickReply = `Ready to save to ${data}, sir. The companion server handles file operations.`;
+        }
+        break;
+      case "run_local":
+        if (data) {
+          toolResult = { type: "run_local", data: { code: data } };
+          quickReply = "Running that on your local machine via the companion server, sir.";
+        }
+        break;
+      case "make_spreadsheet":
+        toolResult = { type: "make_spreadsheet", data: { description: data || "spreadsheet" } };
+        quickReply = data
+          ? `I'll create a spreadsheet for "${data}", sir. The companion server will generate and open it on your machine.`
+          : "Ready to create a spreadsheet, sir. Tell me what data to include.";
+        break;
+      case "make_document":
+        toolResult = { type: "make_document", data: { description: data || "document" } };
+        quickReply = data
+          ? `Creating a document about "${data}", sir. It'll be saved to your Desktop and opened automatically.`
+          : "Ready to create a document, sir. What should it contain?";
+        break;
+      case "organize_files":
+        toolResult = { type: "organize_files", data: { directory: data || "~/Downloads" } };
+        quickReply = `Organizing files in ${data || "Downloads"}, sir. The companion will sort them into folders by type.`;
+        break;
+      case "search_files":
+        if (data) {
+          toolResult = { type: "search_files", data: { query: data } };
+          quickReply = `Searching for "${data}" on your machine, sir.`;
+        }
+        break;
+      case "clipboard":
+        if (data) {
+          toolResult = { type: "clipboard", data };
+          quickReply = data.action === "paste" ? "Checking your clipboard, sir." : "Copied to clipboard, sir.";
+        }
+        break;
     }
   } catch (e) {
     console.error("Tool error:", e.message);
@@ -596,6 +648,11 @@ export default async function handler(req, res) {
       gallery: "Here's your gallery, sir.", vision_trigger: "Camera ready, sir.",
       nutrition: "Here's the nutrition info, sir.", briefing: "Here's your daily briefing, sir.",
       screen_share: "Screen sharing panel ready, sir.",
+      open_app: "Done, sir.", list_files: "Here are your files, sir.",
+      save_file: "File saved, sir.", run_local: "Executed on your machine, sir.",
+      make_spreadsheet: "Spreadsheet created, sir.", make_document: "Document created, sir.",
+      organize_files: "Files organized, sir.", search_files: "Search complete, sir.",
+      clipboard: "Clipboard operation done, sir.",
     };
     quickReply = defaults[toolResult.type] || "Here are the results, sir.";
   }
