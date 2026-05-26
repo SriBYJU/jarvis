@@ -89,7 +89,7 @@ async function toolNews(query) {
 }
 
 async function toolWebSearch(query) {
-  const apiKey = process.env.GOOGLE_API_KEY;
+  const apiKey = process.env.GOOGLE_API_KEY || process.env.YOUTUBE_API_KEY;
   const cseId = process.env.GOOGLE_SEARCH_CX || process.env.GOOGLE_CSE_ID;
   if (!apiKey || !cseId) return null;
   const resp = await fetch(`https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(query)}&key=${apiKey}&cx=${cseId}&num=5`);

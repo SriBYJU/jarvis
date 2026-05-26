@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
   const result = await chatCompletionStream(messages, systemPrompt || "", mode || "fast", model || null);
   if (!result) {
-    return res.status(500).json({ error: "Streaming not available — no API keys configured" });
+    return res.status(503).json({ error: "All AI models are currently busy. Please try again in a moment, sir." });
   }
 
   res.writeHead(200, {
