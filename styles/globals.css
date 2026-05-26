@@ -351,6 +351,8 @@ html, body { height: 100%; overflow: hidden; background: #04070f; color: #e0e8f0
 .agent-step-running { color: #ffd700; }
 .agent-step-running .agent-step-icon { animation: pulseGlow 1s infinite; }
 .agent-step-done { color: rgba(58,255,26,0.7); text-decoration: none; }
+.agent-step-error { color: rgba(255,74,74,0.7); }
+.agent-step-error .agent-step-icon { color: #ff4a4a; }
 
 /* Agent input glow */
 .agent-input {

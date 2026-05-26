@@ -418,33 +418,58 @@ function ScreenshotPanel({ data, expanded, onToggle }) {
 
 function VisionPanel({ data, expanded, onToggle, onCapture }) {
   const videoRef = useRef(null);
+  const streamRef = useRef(null);
   const [streaming, setStreaming] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(data?.analysis || null);
+  const [error, setError] = useState(null);
+
+  const startCamera = useCallback(async () => {
+    setError(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError("Camera not supported in this browser. Try Chrome or Firefox.");
+        return;
+      }
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = mediaStream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+        videoRef.current.onloadedmetadata = () => { videoRef.current.play().catch(() => {}); };
+        setStreaming(true);
+      }
+    } catch (err) {
+      if (err.name === "NotAllowedError") {
+        setError("Camera access denied. Please allow camera permissions in your browser settings.");
+      } else if (err.name === "NotFoundError") {
+        setError("No camera found. Please connect a camera and try again.");
+      } else {
+        setError("Could not access camera: " + err.message);
+      }
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setStreaming(false);
+  }, []);
 
   useEffect(() => {
     if (data?.analysis) { setResult(data.analysis); return; }
     startCamera();
     return () => stopCamera();
-  }, []);
-
-  async function startCamera() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      if (videoRef.current) { videoRef.current.srcObject = stream; setStreaming(true); }
-    } catch { setResult("Camera access denied. Please allow camera permissions."); }
-  }
-
-  function stopCamera() {
-    if (videoRef.current?.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
-      setStreaming(false);
-    }
-  }
+  }, [data?.analysis, startCamera, stopCamera]);
 
   async function capture() {
     if (!videoRef.current) return;
     setAnalyzing(true);
+    setError(null);
     const canvas = document.createElement("canvas");
     canvas.width = videoRef.current.videoWidth || 640;
     canvas.height = videoRef.current.videoHeight || 480;
@@ -457,11 +482,23 @@ function VisionPanel({ data, expanded, onToggle, onCapture }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: imageData, prompt: "What do you see? Describe in detail." }),
       });
+      if (!r.ok) {
+        const errData = await r.json().catch(() => ({}));
+        setError(errData.error || "Vision analysis failed. The AI models may be busy.");
+        setAnalyzing(false);
+        return;
+      }
       const d = await r.json();
-      setResult(d.data?.analysis || "Could not analyze image.");
-      if (onCapture) onCapture(d.data?.analysis);
+      const analysis = d.data?.analysis || d.analysis;
+      if (analysis) {
+        setResult(analysis);
+        stopCamera();
+        if (onCapture) onCapture(analysis);
+      } else {
+        setError("Could not analyze the image. Try again with better lighting.");
+      }
     } catch {
-      setResult("Vision analysis failed. Try again.");
+      setError("Connection error. Please check your internet and try again.");
     }
     setAnalyzing(false);
   }
@@ -470,16 +507,25 @@ function VisionPanel({ data, expanded, onToggle, onCapture }) {
     <div className={`tool-panel${expanded ? " expanded" : ""}`}>
       <div className="panel-header"><span>AI VISION CAMERA</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
       <div style={{ padding: 8 }}>
-        {!result && <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", borderRadius: 6, border: "1px solid rgba(126,207,255,0.2)" }} />}
-        {streaming && !result && (
-          <button className="vision-capture-btn" onClick={capture} disabled={analyzing}>
-            {analyzing ? "ANALYZING..." : "CAPTURE & ANALYZE"}
+        {error && <div style={{ padding: 8, color: "#ff4a4a", fontSize: 13, background: "rgba(255,74,74,0.1)", borderRadius: 6, marginBottom: 8 }}>{error}</div>}
+        {!result && (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{ width: "100%", borderRadius: 6, border: "1px solid rgba(126,207,255,0.2)", background: "#000", minHeight: 200 }}
+          />
+        )}
+        {!result && (
+          <button className="vision-capture-btn" onClick={streaming ? capture : startCamera} disabled={analyzing}>
+            {analyzing ? "ANALYZING..." : streaming ? "CAPTURE & ANALYZE" : "START CAMERA"}
           </button>
         )}
         {result && (
           <div style={{ padding: 8 }}>
             <div style={{ fontSize: 13, lineHeight: 1.6, maxHeight: expanded ? "none" : 200, overflow: "auto" }}>{result}</div>
-            <button className="vision-capture-btn" onClick={() => { setResult(null); startCamera(); }} style={{ marginTop: 8 }}>
+            <button className="vision-capture-btn" onClick={() => { setResult(null); setError(null); startCamera(); }} style={{ marginTop: 8 }}>
               SCAN AGAIN
             </button>
           </div>
@@ -903,7 +949,7 @@ export default function Home() {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, systemPrompt: p.system, userId: "default", mode }),
+        body: JSON.stringify({ message: text, messages: [...messages, userMsg].slice(-8), systemPrompt: p.system, userId: "default", mode }),
         signal: abortRef.current.signal,
       });
 
@@ -928,7 +974,10 @@ export default function Home() {
               setAgentSteps(event.steps.map(s => ({ text: s, status: "pending" })));
             }
             else if (event.type === "step") {
-              setAgentSteps(prev => prev.map((s, i) => i === event.index ? { ...s, status: "running" } : i < event.index ? { ...s, status: "done" } : s));
+              setAgentSteps(prev => prev.map((s, i) => i === event.index ? { ...s, status: "running" } : i < event.index && s.status === "pending" ? { ...s, status: "done" } : s));
+            }
+            else if (event.type === "step_error") {
+              setAgentSteps(prev => prev.map((s, i) => i === event.index ? { ...s, status: "error", text: event.description } : s));
             }
             else if (event.type === "tool") {
               setTool(event.tool);
@@ -991,31 +1040,56 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (!wakeWordOn) { if (wakeLoopRef.current) { try { wakeLoopRef.current.stop(); } catch {} } return; }
+    if (!wakeWordOn) {
+      if (wakeLoopRef.current) { try { wakeLoopRef.current.stop(); } catch {} wakeLoopRef.current = null; }
+      return;
+    }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
+    if (!SR) {
+      addSystemMessage("Wake word detection is not supported in this browser. Try Chrome.");
+      setWakeWordOn(false);
+      return;
+    }
+    let active = true;
     function listen() {
-      const rec = new SR();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = "en-US";
-      rec.onresult = (e) => {
-        const transcript = Array.from(e.results).map(r => r[0].transcript).join(" ").toLowerCase();
-        if (transcript.includes("hey jarvis") || transcript.includes("hey friday") || transcript.includes("hey edith")) {
-          rec.stop();
-          if (transcript.includes("friday")) setPersona("friday");
-          else if (transcript.includes("edith")) setPersona("edith");
-          else setPersona("jarvis");
-          setTimeout(() => startListening(), 300);
-        }
-      };
-      rec.onerror = () => setTimeout(listen, 1000);
-      rec.onend = () => { if (wakeWordOn) setTimeout(listen, 500); };
-      wakeLoopRef.current = rec;
-      rec.start();
+      if (!active) return;
+      try {
+        const rec = new SR();
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.lang = "en-US";
+        rec.onresult = (e) => {
+          const transcript = Array.from(e.results).map(r => r[0].transcript).join(" ").toLowerCase();
+          if (transcript.includes("hey jarvis") || transcript.includes("hey friday") || transcript.includes("hey edith")) {
+            rec.stop();
+            if (transcript.includes("friday")) setPersona("friday");
+            else if (transcript.includes("edith")) setPersona("edith");
+            else setPersona("jarvis");
+            setTimeout(() => { if (active) startListening(); }, 300);
+          }
+        };
+        rec.onerror = (e) => {
+          if (e.error === "not-allowed") {
+            addSystemMessage("Microphone access denied. Please allow microphone permissions.");
+            setWakeWordOn(false);
+            active = false;
+            return;
+          }
+          if (active) setTimeout(listen, 1000);
+        };
+        rec.onend = () => { if (active) setTimeout(listen, 500); };
+        wakeLoopRef.current = rec;
+        rec.start();
+      } catch {
+        if (active) setTimeout(listen, 2000);
+      }
     }
     listen();
-    return () => { try { wakeLoopRef.current?.stop(); } catch {} };
+    return () => {
+      active = false;
+      try { wakeLoopRef.current?.stop(); } catch {}
+      wakeLoopRef.current = null;
+    };
   }, [wakeWordOn]);
 
   async function sendToolChat(text, fileContext) {
@@ -1110,10 +1184,15 @@ export default function Home() {
         const cleaned = cleanResponse(full);
         setMessages((prev) => [...prev, { role: "assistant", content: cleaned }]);
         speak(cleaned);
+        setStreamText("");
+        setPhase("idle");
+      } else {
+        // Stream returned no tokens — fall back to chat endpoint
+        setStreamText("");
+        await sendToolChat(text, fileContext);
       }
-      setStreamText("");
-      setPhase("idle");
     } catch {
+      setStreamText("");
       await sendToolChat(text, fileContext);
     }
   }
@@ -1320,7 +1399,7 @@ export default function Home() {
                   {agentSteps.map((step, i) => (
                     <div key={i} className={`agent-step agent-step-${step.status}`}>
                       <span className="agent-step-icon">
-                        {step.status === "done" ? "✓" : step.status === "running" ? "◎" : "○"}
+                        {step.status === "done" ? "✓" : step.status === "running" ? "◎" : step.status === "error" ? "✗" : "○"}
                       </span>
                       <span>{step.text}</span>
                     </div>
