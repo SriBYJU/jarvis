@@ -1,20 +1,19 @@
-import { getConversationHistory, saveConversationHistory, listConversationUsers } from "../../lib/store";
+import { getConversationHistory, saveConversationHistory } from "../../lib/store";
 
 export default async function handler(req, res) {
   if (req.method === "GET") {
     const { userId } = req.query;
     if (!userId) {
-      const users = listConversationUsers();
-      return res.status(200).json({ users });
+      return res.status(200).json({ users: [] });
     }
-    const messages = getConversationHistory(userId);
+    const messages = await getConversationHistory(userId);
     return res.status(200).json({ userId, messages });
   }
 
   if (req.method === "POST") {
     const { userId, messages } = req.body;
     if (!userId || !messages) return res.status(400).json({ error: "userId and messages required" });
-    saveConversationHistory(userId, messages);
+    await saveConversationHistory(userId, messages);
     return res.status(200).json({ saved: true });
   }
 

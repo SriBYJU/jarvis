@@ -8,7 +8,11 @@ export default async function handler(req, res) {
   const { messages: rawMessages, systemPrompt, mode, model } = req.body;
   const messages = rawMessages || [];
 
-  const result = await chatCompletionStream(messages, systemPrompt || "", mode || "fast", model || null);
+  const enhancedPrompt = (systemPrompt || "") +
+    " SMART PLANNER: When the user asks to 'build', 'create', 'make', or 'design' something complex, ask 2-3 brief clarifying questions first instead of jumping straight to building." +
+    " PERSONALITY LEARNING: Adapt to user preferences. If they say 'shorter', 'brief', or 'tldr', give concise responses. If they say 'more detail' or 'explain', give longer ones. Remember their communication style.";
+
+  const result = await chatCompletionStream(messages, enhancedPrompt, mode || "fast", model || null);
   if (!result) {
     return res.status(503).json({ error: "All AI models are currently busy. Please try again in a moment, sir." });
   }
@@ -18,6 +22,9 @@ export default async function handler(req, res) {
     "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
   });
+
+  // Send model info as first event
+  res.write(`data: ${JSON.stringify({ meta: { model: result.model } })}\n\n`);
 
   const reader = result.stream.getReader();
   const decoder = new TextDecoder();

@@ -33,6 +33,35 @@ function pickVoice(voices, prefs) {
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 5) return "Burning the midnight oil";
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  if (h < 21) return "Good evening";
+  return "Good evening";
+}
+
+function formatTime(d) {
+  return new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function getSuggestions(text, toolType) {
+  if (!text && !toolType) return [];
+  const lower = (text || "").toLowerCase();
+  if (toolType === "weather") return ["Show me the forecast for tomorrow", "Compare weather in 3 cities", "What should I wear today?"];
+  if (toolType === "news") return ["Tell me more about the top story", "Search for tech news", "What's trending globally?"];
+  if (toolType === "stock") return ["Compare it with other stocks", "Show me the S&P 500", "What are the top gainers today?"];
+  if (toolType === "youtube") return ["Find me something similar", "Play some music", "Show trending videos"];
+  if (toolType === "map") return ["Get directions there", "What's nearby?", "Show me restaurants around there"];
+  if (toolType === "wikipedia") return ["Tell me more about this", "Show related topics", "Summarize in 3 sentences"];
+  if (toolType === "image") return ["Generate another variation", "Make it more detailed", "Create a gallery of 4"];
+  if (lower.includes("hello") || lower.includes("hi ") || lower.includes("hey") || lower.includes("how are")) return ["What can you do?", "Tell me a joke", "What's the weather like?", "Show me the latest news"];
+  if (lower.includes("code") || lower.includes("program") || lower.includes("function")) return ["Explain this code", "Optimize it for performance", "Write unit tests for it"];
+  if (lower.includes("thank")) return ["What else can you help with?", "Show my projects", "What's new today?"];
+  return ["Tell me more", "Search the web for this", "Remember this for later"];
+}
+
 function cleanResponse(text) {
   if (!text) return text;
   let c = text.replace(/<minimax:tool_call>[\s\S]*?<\/minimax:tool_call>/gi, "");
@@ -535,6 +564,153 @@ function VisionPanel({ data, expanded, onToggle, onCapture }) {
   );
 }
 
+/* ── Nutrition Panel ─────────────────────────────────────────────── */
+function NutritionPanel({ data, expanded, onToggle }) {
+  const results = data?.results || [];
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`} style={{ borderColor: "rgba(58,255,26,0.2)" }}>
+      <div className="panel-header"><span>NUTRITION</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      {data?.query && <div style={{ fontSize: 11, color: "#7ecfff", marginBottom: 8, letterSpacing: 0.5 }}>Results for: {data.query}</div>}
+      {results.length === 0 && <div style={{ opacity: 0.4, fontSize: 12 }}>No nutrition data found.</div>}
+      {results.map((r, i) => (
+        <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, padding: 8, background: "rgba(58,255,26,0.04)", borderRadius: 8, border: "1px solid rgba(58,255,26,0.08)" }}>
+          {r.image && <img src={r.image} alt={r.name} style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover" }} />}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, color: "#e0e8f0", fontWeight: 600 }}>{r.name} {r.brand && <span style={{ fontSize: 10, opacity: 0.5 }}>({r.brand})</span>}</div>
+            <div style={{ display: "flex", gap: 12, marginTop: 4, fontSize: 11 }}>
+              {r.calories != null && <span style={{ color: "#ffd700" }}>{Math.round(r.calories)} kcal</span>}
+              {r.protein != null && <span style={{ color: "#3aff1a" }}>P: {r.protein}g</span>}
+              {r.carbs != null && <span style={{ color: "#7ecfff" }}>C: {r.carbs}g</span>}
+              {r.fat != null && <span style={{ color: "#ff9f7e" }}>F: {r.fat}g</span>}
+            </div>
+            {r.nutriscore && <div style={{ marginTop: 3, fontSize: 10, opacity: 0.5 }}>Nutriscore: {r.nutriscore.toUpperCase()} | per {r.serving}</div>}
+          </div>
+        </div>
+      ))}
+      {data?.source && <div style={{ fontSize: 9, opacity: 0.3, marginTop: 4 }}>Source: {data.source}</div>}
+    </div>
+  );
+}
+
+/* ── Briefing Panel ──────────────────────────────────────────────── */
+function BriefingPanel({ data, expanded, onToggle }) {
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`} style={{ borderColor: "rgba(255,215,0,0.2)" }}>
+      <div className="panel-header"><span>DAILY BRIEFING</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      {data?.datetime && (
+        <div style={{ marginBottom: 12, padding: 8, background: "rgba(255,215,0,0.04)", borderRadius: 8, border: "1px solid rgba(255,215,0,0.1)" }}>
+          <div style={{ fontSize: 14, color: "#ffd700", fontWeight: 600 }}>{data.datetime.date}</div>
+          <div style={{ fontSize: 12, opacity: 0.5 }}>{data.datetime.time}</div>
+        </div>
+      )}
+      {data?.weather && (
+        <div style={{ marginBottom: 10, padding: 8, background: "rgba(126,207,255,0.04)", borderRadius: 8, border: "1px solid rgba(126,207,255,0.08)" }}>
+          <div style={{ fontSize: 11, color: "#7ecfff", letterSpacing: 1, marginBottom: 4 }}>WEATHER</div>
+          <div style={{ fontSize: 13 }}>{data.weather.city}: {Math.round(data.weather.temp)}°F — {data.weather.desc}</div>
+          <div style={{ fontSize: 10, opacity: 0.4 }}>Humidity: {data.weather.humidity}% | Wind: {data.weather.wind} mph</div>
+        </div>
+      )}
+      {data?.news && data.news.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: "#ff9f7e", letterSpacing: 1, marginBottom: 6 }}>TOP HEADLINES</div>
+          {data.news.map((n, i) => (
+            <div key={i} style={{ marginBottom: 6, fontSize: 12 }}>
+              <a href={n.url} target="_blank" rel="noopener" style={{ color: "#e0e8f0", textDecoration: "none" }}>{n.title}</a>
+              <span style={{ fontSize: 9, opacity: 0.3, marginLeft: 6 }}>{n.source}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {data?.stocks && data.stocks.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, color: "#3aff1a", letterSpacing: 1, marginBottom: 6 }}>MARKET SNAPSHOT</div>
+          <div style={{ display: "flex", gap: 12 }}>
+            {data.stocks.map((s, i) => (
+              <div key={i} style={{ padding: "6px 10px", background: "rgba(58,255,26,0.04)", borderRadius: 6, border: "1px solid rgba(58,255,26,0.08)" }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>{s.symbol}</div>
+                <div style={{ fontSize: 13, color: "#e0e8f0" }}>${s.price?.toFixed(2) || "N/A"}</div>
+                {s.change != null && <div style={{ fontSize: 10, color: s.change >= 0 ? "#3aff1a" : "#ff4a4a" }}>{s.change >= 0 ? "+" : ""}{s.change?.toFixed(2)}%</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Screen Share Panel ──────────────────────────────────────────── */
+function ScreenSharePanel({ data, expanded, onToggle }) {
+  const [sharing, setSharing] = useState(false);
+  const [screenshot, setScreenshot] = useState(null);
+  const [analysis, setAnalysis] = useState(data?.analysis || null);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
+  async function startCapture() {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: false });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setSharing(true);
+      stream.getVideoTracks()[0].onended = () => stopCapture();
+    } catch (err) {
+      setAnalysis("Screen sharing was denied or not supported in this browser.");
+    }
+  }
+
+  function captureFrame() {
+    if (!videoRef.current || !sharing) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    canvas.getContext("2d").drawImage(videoRef.current, 0, 0);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+    setScreenshot(dataUrl);
+    analyzeScreen(dataUrl);
+  }
+
+  async function analyzeScreen(imgData) {
+    setAnalysis("Analyzing your screen...");
+    try {
+      const res = await fetch("/api/tools/vision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imgData, prompt: "Describe what you see on this screen in detail. What application is open? What is the user working on?" }),
+      });
+      const d = await res.json();
+      setAnalysis(d.analysis || d.description || "Could not analyze the screen.");
+    } catch {
+      setAnalysis("Failed to analyze screen. Vision API may be unavailable.");
+    }
+  }
+
+  function stopCapture() {
+    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    setSharing(false);
+  }
+
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`} style={{ borderColor: "rgba(126,207,255,0.2)" }}>
+      <div className="panel-header"><span>SCREEN ANALYSIS</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      <video ref={videoRef} autoPlay muted playsInline style={{ width: "100%", borderRadius: 8, marginBottom: 8, display: sharing ? "block" : "none", maxHeight: 200 }} />
+      <div style={{ display: "flex", gap: 8 }}>
+        {!sharing ? (
+          <button onClick={startCapture} style={{ background: "rgba(126,207,255,0.1)", border: "1px solid rgba(126,207,255,0.3)", color: "#7ecfff", padding: "8px 16px", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>SHARE SCREEN</button>
+        ) : (
+          <>
+            <button onClick={captureFrame} style={{ background: "rgba(58,255,26,0.1)", border: "1px solid rgba(58,255,26,0.3)", color: "#3aff1a", padding: "8px 16px", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>CAPTURE & ANALYZE</button>
+            <button onClick={stopCapture} style={{ background: "rgba(255,74,74,0.1)", border: "1px solid rgba(255,74,74,0.2)", color: "#ff4a4a", padding: "8px 12px", borderRadius: 8, cursor: "pointer" }}>STOP</button>
+          </>
+        )}
+      </div>
+      {screenshot && <img src={screenshot} alt="Screen capture" style={{ width: "100%", borderRadius: 8, marginTop: 8, opacity: 0.8 }} />}
+      {analysis && <div style={{ marginTop: 10, fontSize: 12, color: "#e0e8f0", lineHeight: 1.5, padding: 8, background: "rgba(0,0,0,0.2)", borderRadius: 6 }}>{analysis}</div>}
+    </div>
+  );
+}
+
 function SystemPanel({ expanded, onToggle }) {
   const [stats, setStats] = useState(null);
   useEffect(() => {
@@ -686,6 +862,9 @@ function ToolPanel({ tool, expanded, onToggle, onVisionCapture }) {
     case "vision_trigger": return <VisionPanel data={{}} expanded={expanded} onToggle={onToggle} onCapture={onVisionCapture} />;
     case "system": return <SystemPanel expanded={expanded} onToggle={onToggle} />;
     case "file_download": return <FileDownloadPanel data={d} expanded={expanded} onToggle={onToggle} />;
+    case "nutrition": return <NutritionPanel data={d} expanded={expanded} onToggle={onToggle} />;
+    case "briefing": return <BriefingPanel data={d} expanded={expanded} onToggle={onToggle} />;
+    case "screen_share": return <ScreenSharePanel data={d} expanded={expanded} onToggle={onToggle} />;
     default: return null;
   }
 }
@@ -695,8 +874,18 @@ function Waveform({ color }) {
   return <div className="waveform">{Array.from({ length: 12 }).map((_, i) => <div key={i} className="wave-bar" style={{ animationDelay: `${i * 0.08}s`, background: color }} />)}</div>;
 }
 
-function Bubble({ role, text, streaming, model }) {
+function Bubble({ role, text, streaming, model, timestamp, onCopy, onSuggest, suggestions }) {
   const isAssistant = role === "assistant";
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+    if (onCopy) onCopy(text);
+  }
+
   return (
     <div className={`bubble ${role}`} style={{ animation: "fadeUp 0.3s ease" }}>
       {isAssistant ? (
@@ -705,7 +894,22 @@ function Bubble({ role, text, streaming, model }) {
         <div className="bubble-text">{text}{streaming && <span className="cursor-blink">|</span>}</div>
       )}
       {streaming && isAssistant && <span className="cursor-blink">|</span>}
-      {model && isAssistant && <div className="bubble-model">{model}</div>}
+      <div className="bubble-footer">
+        {timestamp && <span className="bubble-time">{formatTime(timestamp)}</span>}
+        {model && isAssistant && <span className="bubble-model">{model.split("/").pop().replace(":free", "")}</span>}
+        {!streaming && text && (
+          <button className="bubble-copy" onClick={handleCopy} title="Copy">
+            {copied ? "Copied" : "Copy"}
+          </button>
+        )}
+      </div>
+      {suggestions && suggestions.length > 0 && !streaming && isAssistant && (
+        <div className="bubble-suggestions">
+          {suggestions.map((s, i) => (
+            <button key={i} className="suggest-btn" onClick={() => onSuggest && onSuggest(s)}>{s}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -851,6 +1055,14 @@ export default function Home() {
   const [lastModel, setLastModel] = useState("");
   const [uploadedFile, setUploadedFile] = useState(null);
   const [panelWidth, setPanelWidth] = useState(340);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [cmdSearch, setCmdSearch] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [thinkingDots, setThinkingDots] = useState("");
+  const [streamModel, setStreamModel] = useState("");
+  const [responseStartTime, setResponseStartTime] = useState(null);
+  const [responseTime, setResponseTime] = useState(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   const chatRef = useRef(null);
   const synthRef = useRef(null);
@@ -860,12 +1072,29 @@ export default function Home() {
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
+  const cmdInputRef = useRef(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [agentMode, setAgentMode] = useState(false);
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentSteps, setAgentSteps] = useState([]);
   const [agentStatus, setAgentStatus] = useState("");
   const [agentPlan, setAgentPlan] = useState(null);
+
+  // ── NEW FEATURE STATES ──────────────────────────────────────────
+  const [automations, setAutomations] = useState([]);
+  const [showAutomations, setShowAutomations] = useState(false);
+  const [codePlayground, setCodePlayground] = useState({ code: "", output: "", running: false });
+  const [showCodePlayground, setShowCodePlayground] = useState(false);
+  const [workspaces, setWorkspaces] = useState([{ id: "main", name: "Main" }]);
+  const [activeWorkspace, setActiveWorkspace] = useState("main");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [showContext, setShowContext] = useState(false);
+  const [learningFacts, setLearningFacts] = useState([]);
+  const [theme, setTheme] = useState("hud");
+  const [showVoiceHUD, setShowVoiceHUD] = useState(false);
+  const [pinnedTools, setPinnedTools] = useState(["weather", "news", "camera", "stocks"]);
+  const [showThemePicker, setShowThemePicker] = useState(false);
+  const automationTimers = useRef({});
 
   const p = PERSONAS[persona];
 
@@ -874,6 +1103,67 @@ export default function Home() {
   }, []);
 
   useReminderChecker(addSystemMessage);
+
+  // ── Desktop Notifications ──────────────────────────────────────
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") setNotificationsEnabled(true);
+  }, []);
+
+  function requestNotifications() {
+    if (typeof Notification === "undefined") return;
+    Notification.requestPermission().then(p => { if (p === "granted") setNotificationsEnabled(true); });
+  }
+
+  function sendNotification(title, body) {
+    if (!notificationsEnabled || typeof Notification === "undefined") return;
+    try { new Notification(title, { body, icon: "/favicon.ico" }); } catch {}
+  }
+
+  // ── Automation Runner ──────────────────────────────────────────
+  useEffect(() => {
+    // Clear old timers
+    Object.values(automationTimers.current).forEach(clearInterval);
+    automationTimers.current = {};
+    // Set up active automations
+    automations.filter(a => a.active).forEach(a => {
+      automationTimers.current[a.id] = setInterval(() => {
+        sendNotification("JARVIS Automation", `Running: ${a.name}`);
+        smartSendFromAutomation(a.command);
+      }, a.intervalMs);
+    });
+    return () => Object.values(automationTimers.current).forEach(clearInterval);
+  }, [automations]);
+
+  // Load automations and learning facts from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("jarvis-automations");
+      if (saved) setAutomations(JSON.parse(saved));
+      const savedTheme = localStorage.getItem("jarvis-theme");
+      if (savedTheme) setTheme(savedTheme);
+      const savedPins = localStorage.getItem("jarvis-pinned-tools");
+      if (savedPins) setPinnedTools(JSON.parse(savedPins));
+    } catch {}
+  }, []);
+
+  // Persist automations
+  useEffect(() => {
+    try { localStorage.setItem("jarvis-automations", JSON.stringify(automations)); } catch {}
+  }, [automations]);
+
+  // Persist theme
+  useEffect(() => {
+    try { localStorage.setItem("jarvis-theme", theme); } catch {}
+  }, [theme]);
+
+  // Fetch learning context
+  function fetchLearningFacts() {
+    fetch("/api/tools/memory").then(r => r.json()).then(d => {
+      setLearningFacts(d.data || d.memories || []);
+    }).catch(() => {});
+  }
+
+  useEffect(() => { fetchLearningFacts(); }, []);
 
   useEffect(() => {
     synthRef.current = window.speechSynthesis;
@@ -885,6 +1175,68 @@ export default function Home() {
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages, streamText]);
+
+  // Thinking dots animation
+  useEffect(() => {
+    if (phase !== "thinking") { setThinkingDots(""); return; }
+    let i = 0;
+    const interval = setInterval(() => { i = (i + 1) % 4; setThinkingDots(".".repeat(i)); }, 400);
+    return () => clearInterval(interval);
+  }, [phase]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKey(e) {
+      if (e.key === "Escape") {
+        if (showCommandPalette) { setShowCommandPalette(false); setCmdSearch(""); return; }
+        if (showShortcuts) { setShowShortcuts(false); return; }
+        if (phase === "thinking") { stopGenerating(); return; }
+        if (isSpeaking) { stopSpeaking(); return; }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); setShowCommandPalette(p => !p); setCmdSearch(""); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key === "n") { e.preventDefault(); newSession(); return; }
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") { e.preventDefault(); inputRef.current?.focus(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key === "?") { e.preventDefault(); setShowShortcuts(p => !p); return; }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [phase, isSpeaking, showCommandPalette, showShortcuts]);
+
+  // Focus command palette input
+  useEffect(() => {
+    if (showCommandPalette && cmdInputRef.current) cmdInputRef.current.focus();
+  }, [showCommandPalette]);
+
+  // Drag & drop file upload
+  useEffect(() => {
+    function handleDragOver(e) { e.preventDefault(); setIsDragging(true); }
+    function handleDragLeave(e) { e.preventDefault(); if (e.relatedTarget === null || !e.currentTarget.contains(e.relatedTarget)) setIsDragging(false); }
+    async function handleDrop(e) {
+      e.preventDefault();
+      setIsDragging(false);
+      const file = e.dataTransfer.files?.[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const res = await fetch("/api/upload", { method: "POST", body: formData });
+        const data = await res.json();
+        if (data.data) {
+          setUploadedFile(data.data);
+          setTool(data);
+          addSystemMessage(`File uploaded: ${data.data.name} (${(data.data.size / 1024).toFixed(1)} KB)`);
+        }
+      } catch { addSystemMessage("File upload failed."); }
+    }
+    document.addEventListener("dragover", handleDragOver);
+    document.addEventListener("dragleave", handleDragLeave);
+    document.addEventListener("drop", handleDrop);
+    return () => {
+      document.removeEventListener("dragover", handleDragOver);
+      document.removeEventListener("dragleave", handleDragLeave);
+      document.removeEventListener("drop", handleDrop);
+    };
+  }, [addSystemMessage]);
 
   useEffect(() => {
     fetch("/api/sessions?userId=default").then(r => r.json()).then(d => setSessions(d.sessions || [])).catch(() => {});
@@ -940,7 +1292,7 @@ export default function Home() {
     setAgentSteps([]);
     setAgentPlan(null);
     setAgentStatus("Initializing agent...");
-    const userMsg = { role: "user", content: text };
+    const userMsg = { role: "user", content: text, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
 
@@ -989,7 +1341,7 @@ export default function Home() {
             }
             else if (event.type === "reply") {
               const cleaned = cleanResponse(event.text);
-              setMessages(prev => [...prev, { role: "assistant", content: cleaned, model: event.model }]);
+              setMessages(prev => [...prev, { role: "assistant", content: cleaned, model: event.model, timestamp: Date.now() }]);
               setLastModel(event.model || "");
               speak(cleaned);
               setAgentSteps(prev => prev.map(s => ({ ...s, status: "done" })));
@@ -1094,7 +1446,8 @@ export default function Home() {
 
   async function sendToolChat(text, fileContext) {
     setPhase("thinking");
-    const userMsg = { role: "user", content: fileContext ? `[File: ${fileContext.name}]\n${text}` : text };
+    setResponseStartTime(Date.now());
+    const userMsg = { role: "user", content: fileContext ? `[File: ${fileContext.name}]\n${text}` : text, timestamp: Date.now() };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
 
@@ -1116,7 +1469,9 @@ export default function Home() {
 
       if (data.reply) {
         const cleaned = cleanResponse(data.reply);
-        setMessages((prev) => [...prev, { role: "assistant", content: cleaned, model: data.model }]);
+        const elapsed = Date.now() - (responseStartTime || Date.now());
+        setResponseTime(elapsed);
+        setMessages((prev) => [...prev, { role: "assistant", content: cleaned, model: data.model, timestamp: Date.now() }]);
         setLastModel(data.model || "");
         speak(cleaned);
       }
@@ -1136,8 +1491,11 @@ export default function Home() {
 
   async function sendStreamChat(text, fileContext) {
     setPhase("thinking");
+    setResponseStartTime(Date.now());
+    setResponseTime(null);
+    setStreamModel("");
     const content = fileContext ? `[File: ${fileContext.name}]\n${fileContext.content ? fileContext.content.slice(0, 5000) + "\n\n" : ""}${text}` : text;
-    const userMsg = { role: "user", content };
+    const userMsg = { role: "user", content, timestamp: Date.now() };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
 
@@ -1172,6 +1530,7 @@ export default function Home() {
           if (payload === "[DONE]") break;
           try {
             const parsed = JSON.parse(payload);
+            if (parsed.meta?.model) { setStreamModel(parsed.meta.model); setLastModel(parsed.meta.model); continue; }
             const token = parsed.token || parsed.choices?.[0]?.delta?.content;
             if (token) { full += token; setStreamText(cleanResponse(full)); }
           } catch {
@@ -1182,12 +1541,13 @@ export default function Home() {
 
       if (full) {
         const cleaned = cleanResponse(full);
-        setMessages((prev) => [...prev, { role: "assistant", content: cleaned }]);
+        const elapsed = Date.now() - (responseStartTime || Date.now());
+        setResponseTime(elapsed);
+        setMessages((prev) => [...prev, { role: "assistant", content: cleaned, model: streamModel || lastModel, timestamp: Date.now() }]);
         speak(cleaned);
         setStreamText("");
         setPhase("idle");
       } else {
-        // Stream returned no tokens — fall back to chat endpoint
         setStreamText("");
         await sendToolChat(text, fileContext);
       }
@@ -1197,18 +1557,108 @@ export default function Home() {
     }
   }
 
+  // ── Code Playground ─────────────────────────────────────────────
+  function runCodePlayground() {
+    setCodePlayground(prev => ({ ...prev, running: true, output: "" }));
+    try {
+      const logs = [];
+      const fakeConsole = { log: (...a) => logs.push(a.map(String).join(" ")), error: (...a) => logs.push("ERROR: " + a.map(String).join(" ")), warn: (...a) => logs.push("WARN: " + a.map(String).join(" ")) };
+      const fn = new Function("console", codePlayground.code);
+      const result = fn(fakeConsole);
+      const output = logs.length > 0 ? logs.join("\n") : (result !== undefined ? String(result) : "(no output)");
+      setCodePlayground(prev => ({ ...prev, output, running: false }));
+    } catch (e) {
+      setCodePlayground(prev => ({ ...prev, output: "Error: " + e.message, running: false }));
+    }
+  }
+
+  // ── Conversation Export ─────────────────────────────────────────
+  function exportConversation(format) {
+    let content = "";
+    const title = messages.find(m => m.role === "user")?.content?.slice(0, 50) || "JARVIS Conversation";
+    if (format === "markdown") {
+      content = `# ${title}\n\n*Exported from J.A.R.V.I.S. on ${new Date().toLocaleString()}*\n\n---\n\n`;
+      messages.forEach(m => {
+        const role = m.role === "user" ? "**You**" : m.role === "assistant" ? `**${p.name}**` : "*System*";
+        const time = m.timestamp ? ` *(${formatTime(m.timestamp)})*` : "";
+        content += `${role}${time}:\n${m.content}\n\n`;
+      });
+    } else {
+      content = messages.map(m => `[${m.role.toUpperCase()}${m.timestamp ? " " + formatTime(m.timestamp) : ""}]: ${m.content}`).join("\n\n");
+    }
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `jarvis-chat-${Date.now()}.${format === "markdown" ? "md" : "txt"}`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+
+  // ── Automation Management ───────────────────────────────────────
+  function addAutomation(name, command, intervalMinutes) {
+    const auto = { id: uid(), name, command, intervalMs: intervalMinutes * 60000, active: true, createdAt: Date.now(), lastRun: null };
+    setAutomations(prev => [...prev, auto]);
+    addSystemMessage(`Automation created: "${name}" — runs every ${intervalMinutes} minutes.`);
+    sendNotification("JARVIS Automation", `Created: ${name}`);
+  }
+
+  function toggleAutomation(id) {
+    setAutomations(prev => prev.map(a => a.id === id ? { ...a, active: !a.active } : a));
+  }
+
+  function removeAutomation(id) {
+    setAutomations(prev => prev.filter(a => a.id !== id));
+  }
+
+  function smartSendFromAutomation(text) {
+    sendToolChat(text);
+  }
+
   function smartSend(text) {
     if (!text?.trim()) return;
     const fileCtx = uploadedFile;
     setUploadedFile(null);
+    const lower = text.toLowerCase().trim();
 
     // System diagnostics shortcut
-    const lower = text.toLowerCase().trim();
     if (/(?:system\s+(?:status|diagnostics|info)|show\s+(?:diagnostics|system))/i.test(lower)) {
       setTool({ type: "system", data: {} });
       setMessages((prev) => [...prev, { role: "user", content: text }, { role: "assistant", content: "Pulling up system diagnostics now, sir." }]);
       setInput("");
       return;
+    }
+
+    // Automation triggers
+    const autoMatch = lower.match(/(?:automate|schedule|every)\s+(.+?)\s+every\s+(\d+)\s*(min|minute|hour|hr)/i);
+    if (autoMatch) {
+      const cmd = autoMatch[1].trim();
+      const num = parseInt(autoMatch[2]);
+      const unit = autoMatch[3].toLowerCase();
+      const mins = unit.startsWith("h") ? num * 60 : num;
+      addAutomation(cmd, cmd, mins);
+      setMessages(prev => [...prev, { role: "user", content: text }, { role: "assistant", content: `Done, sir. I've set up an automation to ${cmd} every ${mins} minutes. You can manage your automations from the sidebar.`, timestamp: Date.now() }]);
+      setInput("");
+      return;
+    }
+
+    // Research mode trigger
+    if (/(?:research|deep\s*dive|investigate|analyze\s+everything\s+about)\s+/i.test(lower) && !agentMode) {
+      setAgentMode(true);
+      sendAgentChat(text);
+      return;
+    }
+
+    // Code playground trigger
+    if (/^(?:run|execute|eval)\s*```/i.test(lower) || /^```(?:js|javascript)/i.test(lower)) {
+      const codeMatch = text.match(/```(?:js|javascript)?\n?([\s\S]*?)```/);
+      if (codeMatch) {
+        setCodePlayground({ code: codeMatch[1], output: "", running: false });
+        setShowCodePlayground(true);
+        setMessages(prev => [...prev, { role: "user", content: text }, { role: "assistant", content: "Code playground is ready, sir. Click Run to execute." }]);
+        setInput("");
+        return;
+      }
     }
 
     if (agentMode) {
@@ -1300,14 +1750,183 @@ export default function Home() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
-      <div className="scanlines" />
+      <div className={`scanlines${theme === "minimal" ? " hidden" : ""}`} />
+      {isDragging && <div className="drag-overlay"><div className="drag-overlay-inner">Drop file to upload</div></div>}
 
-      <div className="jarvis-root">
+      {/* Voice Command HUD */}
+      {showVoiceHUD && (
+        <div className="cmd-palette-overlay" onClick={() => setShowVoiceHUD(false)}>
+          <div className="voice-hud-modal" onClick={e => e.stopPropagation()}>
+            <div className="shortcuts-title">Voice Commands</div>
+            <div className="voice-hud-grid">
+              {[
+                { cmd: "Hey JARVIS", desc: "Activate JARVIS" },
+                { cmd: "Hey FRIDAY", desc: "Switch to FRIDAY" },
+                { cmd: "Hey EDITH", desc: "Switch to EDITH" },
+                { cmd: "Weather in [city]", desc: "Check weather" },
+                { cmd: "Latest news", desc: "Get headlines" },
+                { cmd: "Play [video]", desc: "YouTube search" },
+                { cmd: "Stock price [ticker]", desc: "Stock data" },
+                { cmd: "Set timer for [time]", desc: "Countdown" },
+                { cmd: "Remind me to [task]", desc: "Set reminder" },
+                { cmd: "Translate [text] to [lang]", desc: "Translation" },
+                { cmd: "Search for [query]", desc: "Web search" },
+                { cmd: "Generate image of [desc]", desc: "AI images" },
+                { cmd: "Open camera", desc: "Vision analysis" },
+                { cmd: "System diagnostics", desc: "System info" },
+                { cmd: "Research [topic]", desc: "Deep research" },
+                { cmd: "Automate [task] every [N] minutes", desc: "Schedule task" },
+              ].map(v => (
+                <div key={v.cmd} className="voice-cmd-item" onClick={() => { setShowVoiceHUD(false); setInput(v.cmd); inputRef.current?.focus(); }}>
+                  <div className="voice-cmd-text">{v.cmd}</div>
+                  <div className="voice-cmd-desc">{v.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Code Playground Modal */}
+      {showCodePlayground && (
+        <div className="cmd-palette-overlay" onClick={() => setShowCodePlayground(false)}>
+          <div className="code-playground-modal" onClick={e => e.stopPropagation()}>
+            <div className="playground-header">
+              <span>Code Playground (JavaScript)</span>
+              <button onClick={() => setShowCodePlayground(false)} className="sidebar-close">X</button>
+            </div>
+            <textarea
+              className="playground-editor"
+              value={codePlayground.code}
+              onChange={e => setCodePlayground(prev => ({ ...prev, code: e.target.value }))}
+              placeholder="// Write JavaScript here...\nconsole.log('Hello JARVIS!');"
+              spellCheck={false}
+            />
+            <div className="playground-actions">
+              <button className="playground-run" onClick={runCodePlayground} disabled={codePlayground.running}>
+                {codePlayground.running ? "Running..." : "RUN"}
+              </button>
+              <button className="playground-clear" onClick={() => setCodePlayground({ code: "", output: "", running: false })}>Clear</button>
+            </div>
+            {codePlayground.output && (
+              <div className="playground-output">
+                <div style={{ fontSize: 10, color: "#7ecfff", letterSpacing: 1, marginBottom: 4 }}>OUTPUT</div>
+                <pre style={{ margin: 0, color: codePlayground.output.startsWith("Error") ? "#ff4a4a" : "#3aff1a" }}>{codePlayground.output}</pre>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Smart Context Sidebar */}
+      {showContext && (
+        <div className="context-sidebar">
+          <div className="sidebar-header"><span>What JARVIS Knows</span><button onClick={() => setShowContext(false)} className="sidebar-close">X</button></div>
+          <button className="new-session-btn" onClick={() => { fetchLearningFacts(); }}>Refresh</button>
+          <div className="context-list">
+            {learningFacts.length === 0 && <div style={{ padding: 16, opacity: 0.4, textAlign: "center" }}>No facts learned yet. Chat with JARVIS to build context.</div>}
+            {learningFacts.map((f, i) => (
+              <div key={i} className="context-fact">
+                <span>{f.content || JSON.stringify(f)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Automations Sidebar */}
+      {showAutomations && (
+        <div className="automations-sidebar">
+          <div className="sidebar-header"><span>Automations</span><button onClick={() => setShowAutomations(false)} className="sidebar-close">X</button></div>
+          <div className="context-list">
+            {automations.length === 0 && <div style={{ padding: 16, opacity: 0.4, textAlign: "center" }}>No automations yet. Say &quot;automate [task] every [N] minutes&quot;</div>}
+            {automations.map(a => (
+              <div key={a.id} className="automation-item">
+                <div className="automation-info">
+                  <div className="automation-name">{a.name}</div>
+                  <div className="automation-meta">Every {a.intervalMs / 60000} min | {a.active ? "Active" : "Paused"}</div>
+                </div>
+                <div className="automation-controls">
+                  <button onClick={() => toggleAutomation(a.id)} className={`auto-toggle${a.active ? " active" : ""}`}>{a.active ? "ON" : "OFF"}</button>
+                  <button onClick={() => removeAutomation(a.id)} className="auto-remove">X</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Command Palette */}
+      {showCommandPalette && (
+        <div className="cmd-palette-overlay" onClick={() => { setShowCommandPalette(false); setCmdSearch(""); }}>
+          <div className="cmd-palette" onClick={e => e.stopPropagation()}>
+            <div className="cmd-palette-header">
+              <input ref={cmdInputRef} className="cmd-search" value={cmdSearch} onChange={e => setCmdSearch(e.target.value)} placeholder="Search tools & actions..." autoComplete="off"
+                onKeyDown={e => { if (e.key === "Escape") { setShowCommandPalette(false); setCmdSearch(""); } }} />
+            </div>
+            <div className="cmd-list">
+              {[
+                { label: "Weather", desc: "Check weather anywhere", action: "Weather in " },
+                { label: "News", desc: "Latest headlines", action: "Latest news" },
+                { label: "Maps", desc: "Holographic map view", action: "Show map of " },
+                { label: "YouTube", desc: "Search & play videos", action: "Play video " },
+                { label: "Stocks", desc: "Real-time stock data", action: "Stock price " },
+                { label: "Wikipedia", desc: "Instant knowledge", action: "Wiki " },
+                { label: "Web Search", desc: "Search the internet", action: "Search for " },
+                { label: "Image Gen", desc: "AI-generated images", action: "Generate image of " },
+                { label: "Calculator", desc: "Math calculations", action: "Calculate " },
+                { label: "Translate", desc: "20+ languages", action: "Translate " },
+                { label: "Timer", desc: "Set countdown timer", action: "Set timer for 5 minutes" },
+                { label: "Reminder", desc: "Set reminders", action: "Remind me to " },
+                { label: "Dictionary", desc: "Word definitions", action: "Define " },
+                { label: "Currency", desc: "Exchange rates", action: "Convert 100 USD to EUR" },
+                { label: "World Clock", desc: "Global time zones", action: "World clock" },
+                { label: "QR Code", desc: "Generate QR codes", action: "QR code for " },
+                { label: "Camera", desc: "AI vision analysis", action: "__camera__" },
+                { label: "System Info", desc: "Device diagnostics", action: "System diagnostics" },
+                { label: "Joke", desc: "Tell me a joke", action: "Tell me a joke" },
+                { label: "New Session", desc: "Start fresh", action: "__new_session__" },
+                { label: "Agent Mode", desc: "Multi-step autonomous", action: "__toggle_agent__" },
+              ].filter(c => !cmdSearch || c.label.toLowerCase().includes(cmdSearch.toLowerCase()) || c.desc.toLowerCase().includes(cmdSearch.toLowerCase())).map(c => (
+                <button key={c.label} className="cmd-item" onClick={() => {
+                  setShowCommandPalette(false); setCmdSearch("");
+                  if (c.action === "__camera__") { const t = { type: "vision_trigger", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }
+                  else if (c.action === "__new_session__") newSession();
+                  else if (c.action === "__toggle_agent__") setAgentMode(a => !a);
+                  else { setInput(c.action); inputRef.current?.focus(); }
+                }}>
+                  <span className="cmd-label">{c.label}</span>
+                  <span className="cmd-desc">{c.desc}</span>
+                </button>
+              ))}
+            </div>
+            <div className="cmd-footer">Esc to close &middot; Type to filter</div>
+          </div>
+        </div>
+      )}
+
+      {/* Keyboard Shortcuts Modal */}
+      {showShortcuts && (
+        <div className="cmd-palette-overlay" onClick={() => setShowShortcuts(false)}>
+          <div className="shortcuts-modal" onClick={e => e.stopPropagation()}>
+            <div className="shortcuts-title">Keyboard Shortcuts</div>
+            <div className="shortcut-row"><span className="shortcut-keys">Ctrl + K</span><span>Command palette</span></div>
+            <div className="shortcut-row"><span className="shortcut-keys">Ctrl + N</span><span>New session</span></div>
+            <div className="shortcut-row"><span className="shortcut-keys">/</span><span>Focus chat input</span></div>
+            <div className="shortcut-row"><span className="shortcut-keys">Escape</span><span>Stop / close</span></div>
+            <div className="shortcut-row"><span className="shortcut-keys">Ctrl + ?</span><span>Show shortcuts</span></div>
+          </div>
+        </div>
+      )}
+
+      <div className={`jarvis-root theme-${theme}`}>
         {/* Header */}
         <header className="jarvis-header">
           <div className="header-left">
-            <button className={`sidebar-toggle${showSessions ? " active" : ""}`} onClick={() => { setShowSessions(!showSessions); setShowProjects(false); }} title="Past Sessions">S</button>
-            <button className={`sidebar-toggle${showProjects ? " active" : ""}`} onClick={() => { setShowProjects(!showProjects); setShowSessions(false); }} title="Projects">P</button>
+            <button className={`sidebar-toggle${showSessions ? " active" : ""}`} onClick={() => { setShowSessions(!showSessions); setShowProjects(false); setShowAutomations(false); setShowContext(false); }} title="Past Sessions">S</button>
+            <button className={`sidebar-toggle${showProjects ? " active" : ""}`} onClick={() => { setShowProjects(!showProjects); setShowSessions(false); setShowAutomations(false); setShowContext(false); }} title="Projects">P</button>
+            <button className={`sidebar-toggle${showAutomations ? " active" : ""}`} onClick={() => { setShowAutomations(!showAutomations); setShowSessions(false); setShowProjects(false); setShowContext(false); }} title="Automations">A</button>
+            <button className={`sidebar-toggle${showContext ? " active" : ""}`} onClick={() => { setShowContext(!showContext); setShowSessions(false); setShowProjects(false); setShowAutomations(false); fetchLearningFacts(); }} title="What JARVIS Knows">C</button>
           </div>
           <div className="header-center">
             {Object.keys(PERSONAS).map((k) => (
@@ -1315,6 +1934,7 @@ export default function Home() {
             ))}
           </div>
           <div className="header-right">
+            <button className="cmd-trigger" onClick={() => setShowCommandPalette(true)} title="Command palette (Ctrl+K)">Ctrl+K</button>
             <div className="mode-toggle">
               <button className={`mode-btn${mode === "fast" ? " active" : ""}`} onClick={() => setMode("fast")} title="Fast mode">FAST</button>
               <button className={`mode-btn${mode === "thinking" ? " active" : ""}`} onClick={() => setMode("thinking")} title="Thinking mode">THINK</button>
@@ -1347,6 +1967,22 @@ export default function Home() {
             <button className={`wake-btn${wakeWordOn ? " active" : ""}`} onClick={() => setWakeWordOn(!wakeWordOn)}>
               {wakeWordOn ? "WAKE ON" : "WAKE"}
             </button>
+            <div className="theme-picker-wrapper">
+              <button className="theme-btn" onClick={() => setShowThemePicker(!showThemePicker)} title="Theme">T</button>
+              {showThemePicker && (
+                <div className="theme-dropdown">
+                  {["hud", "dark", "minimal"].map(t => (
+                    <button key={t} className={`theme-option${theme === t ? " active" : ""}`} onClick={() => { setTheme(t); setShowThemePicker(false); }}>
+                      {t === "hud" ? "HUD" : t === "dark" ? "Dark" : "Minimal"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button className="shortcut-btn" onClick={() => setShowVoiceHUD(true)} title="Voice Commands">V</button>
+            <button className="shortcut-btn" onClick={() => setShowCodePlayground(true)} title="Code Playground">{"</>"}</button>
+            <button className="shortcut-btn" onClick={() => setShowShortcuts(true)} title="Keyboard shortcuts (Ctrl+?)">?</button>
+            {!notificationsEnabled && <button className="shortcut-btn" onClick={requestNotifications} title="Enable notifications">N</button>}
             <div className="status-dot" style={{ background: phase === "idle" ? "#3aff1a" : "#ffd700" }} />
           </div>
         </header>
@@ -1380,8 +2016,30 @@ export default function Home() {
 
             {/* Quick Tools */}
             <div className="quick-tools">
-              <button className="qtool-btn" onClick={() => { const t = { type: "vision_trigger", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }} title="Camera">CAM</button>
-              <button className="qtool-btn" onClick={() => { const t = { type: "system", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }} title="System Info">SYS</button>
+              {pinnedTools.map(pt => {
+                const TOOL_MAP = {
+                  weather: { label: "WTR", action: "Weather in my area" },
+                  news: { label: "NEWS", action: "Latest news" },
+                  camera: { label: "CAM", action: "__camera__" },
+                  stocks: { label: "STK", action: "Stock price AAPL" },
+                  map: { label: "MAP", action: "Show map of New York" },
+                  joke: { label: "JKE", action: "Tell me a joke" },
+                  youtube: { label: "YT", action: "Play video " },
+                  wiki: { label: "WIKI", action: "Wiki " },
+                  system: { label: "SYS", action: "__system__" },
+                  timer: { label: "TMR", action: "Set timer for 5 minutes" },
+                  image: { label: "IMG", action: "Generate image of " },
+                  translate: { label: "TRN", action: "Translate " },
+                };
+                const tm = TOOL_MAP[pt] || { label: pt.slice(0, 3).toUpperCase(), action: pt };
+                return (
+                  <button key={pt} className="qtool-btn" onClick={() => {
+                    if (tm.action === "__camera__") { const t = { type: "vision_trigger", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }
+                    else if (tm.action === "__system__") { const t = { type: "system", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }
+                    else { setInput(tm.action); inputRef.current?.focus(); }
+                  }} title={pt}>{tm.label}</button>
+                );
+              })}
             </div>
           </div>
 
@@ -1408,19 +2066,36 @@ export default function Home() {
               </div>
             )}
             <div className="chat-messages" ref={chatRef}>
-              {messages.map((m, i) => (
-                <Bubble key={i} role={m.role} text={m.content} model={m.model} />
-              ))}
-              {streamText && <Bubble role="assistant" text={streamText} streaming />}
-              {messages.length === 0 && !streamText && (
+              {messages.map((m, i) => {
+                const isLast = i === messages.length - 1 && m.role === "assistant";
+                const lastToolType = tool?.type;
+                return (
+                  <Bubble key={i} role={m.role} text={m.content} model={m.model} timestamp={m.timestamp}
+                    suggestions={isLast ? getSuggestions(m.content, lastToolType) : undefined}
+                    onSuggest={(s) => smartSend(s)}
+                  />
+                );
+              })}
+              {streamText && <Bubble role="assistant" text={streamText} streaming model={streamModel} />}
+              {phase === "thinking" && !streamText && (
+                <div className="thinking-indicator">
+                  <div className="thinking-dots-wrapper">
+                    <span className="thinking-dot" /><span className="thinking-dot" /><span className="thinking-dot" />
+                  </div>
+                  <span className="thinking-label">{agentRunning ? "Agent working" : "Thinking"}{thinkingDots}</span>
+                  {streamModel && <span className="thinking-model">{streamModel.split("/").pop().replace(":free", "")}</span>}
+                </div>
+              )}
+              {messages.length === 0 && !streamText && phase !== "thinking" && (
                 <div className="empty-chat">
                   <div className="empty-title">{p.name}</div>
-                  <div className="empty-sub">How can I assist you today, sir?</div>
+                  <div className="empty-sub">{getGreeting()}, sir. How can I assist you?</div>
                   <div className="quick-actions">
                     {["What can you do?", "Weather in Tokyo", "Latest news", "Create an Excel report on S&P 500 stocks", "Generate a PowerPoint on AI trends", "Open camera", "Create a Python web scraper script", "Define serendipity"].map(q => (
                       <button key={q} className="quick-btn" onClick={() => smartSend(q)}>{q}</button>
                     ))}
                   </div>
+                  <div className="shortcut-hint">Press Ctrl+K for command palette</div>
                 </div>
               )}
             </div>
@@ -1430,19 +2105,43 @@ export default function Home() {
                 <button onClick={() => setUploadedFile(null)} style={{ marginLeft: 8, background: "none", border: "none", color: "#ff4a4a", cursor: "pointer" }}>x</button>
               </div>
             )}
+            {/* Workspace Tabs */}
+            <div className="workspace-tabs">
+              {workspaces.map(w => (
+                <button key={w.id} className={`workspace-tab${activeWorkspace === w.id ? " active" : ""}`} onClick={() => setActiveWorkspace(w.id)}>{w.name}</button>
+              ))}
+              <button className="workspace-tab workspace-add" onClick={() => {
+                const id = uid();
+                const name = `Tab ${workspaces.length + 1}`;
+                setWorkspaces(prev => [...prev, { id, name }]);
+                newSession();
+                setActiveWorkspace(id);
+              }}>+</button>
+            </div>
+            {/* Status Bar */}
+            <div className="status-bar">
+              <span className="status-bar-item">{mode === "fast" ? "FAST" : "THINK"} mode</span>
+              {lastModel && <span className="status-bar-item">Model: {lastModel.split("/").pop().replace(":free", "")}</span>}
+              {responseTime && <span className="status-bar-item">{(responseTime / 1000).toFixed(1)}s</span>}
+              <span className="status-bar-item" style={{ color: phase === "idle" ? "#3aff1a" : "#ffd700" }}>{phase === "idle" ? "Ready" : phase === "thinking" ? "Processing" : phase === "listening" ? "Listening" : "Speaking"}</span>
+              {automations.filter(a => a.active).length > 0 && <span className="status-bar-item" style={{ color: "#ffd700" }}>{automations.filter(a => a.active).length} automations</span>}
+              <span className="status-bar-spacer" />
+              <button className="status-bar-item status-bar-shortcut" onClick={() => exportConversation("markdown")} title="Export chat" style={{ background: "none", border: "none", cursor: "pointer", color: "inherit" }}>Export</button>
+              <span className="status-bar-item status-bar-shortcut">Ctrl+K</span>
+            </div>
             <form className="chat-input-form" onSubmit={handleSubmit}>
               <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display: "none" }} />
-              <button type="button" className="upload-btn" onClick={() => fileInputRef.current?.click()} title="Upload file">+</button>
+              <button type="button" className="upload-btn" onClick={() => fileInputRef.current?.click()} title="Upload file (or drag & drop)">+</button>
               <input ref={inputRef} className={`chat-input${agentMode ? " agent-input" : ""}`} value={input} onChange={(e) => setInput(e.target.value)} placeholder={agentMode ? `Ask JARVIS to do anything autonomously...` : `Talk to ${p.name}...`} autoComplete="off" />
               <button type="submit" className="send-btn" disabled={!input.trim() || phase === "thinking"}>&#8594;</button>
               <button type="button" className="mic-btn" onClick={() => phase === "listening" ? stopListening() : startListening()} style={{ color: phase === "listening" ? "#ff4a4a" : p.color }}>
                 {phase === "listening" ? "||" : "MIC"}
               </button>
               {phase === "thinking" && (
-                <button type="button" className="stop-btn" onClick={stopGenerating} title="Stop generating">&#9632; STOP</button>
+                <button type="button" className="stop-btn" onClick={stopGenerating} title="Stop generating (Esc)">&#9632; STOP</button>
               )}
               {isSpeaking && (
-                <button type="button" className="stop-btn" onClick={stopSpeaking} title="Stop speaking" style={{ background: "rgba(58,255,26,0.1)", borderColor: "rgba(58,255,26,0.3)", color: "#3aff1a" }}>&#9632; MUTE</button>
+                <button type="button" className="stop-btn" onClick={stopSpeaking} title="Stop speaking (Esc)" style={{ background: "rgba(58,255,26,0.1)", borderColor: "rgba(58,255,26,0.3)", color: "#3aff1a" }}>&#9632; MUTE</button>
               )}
             </form>
           </div>
