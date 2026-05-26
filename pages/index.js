@@ -564,6 +564,153 @@ function VisionPanel({ data, expanded, onToggle, onCapture }) {
   );
 }
 
+/* ── Nutrition Panel ─────────────────────────────────────────────── */
+function NutritionPanel({ data, expanded, onToggle }) {
+  const results = data?.results || [];
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`} style={{ borderColor: "rgba(58,255,26,0.2)" }}>
+      <div className="panel-header"><span>NUTRITION</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      {data?.query && <div style={{ fontSize: 11, color: "#7ecfff", marginBottom: 8, letterSpacing: 0.5 }}>Results for: {data.query}</div>}
+      {results.length === 0 && <div style={{ opacity: 0.4, fontSize: 12 }}>No nutrition data found.</div>}
+      {results.map((r, i) => (
+        <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10, padding: 8, background: "rgba(58,255,26,0.04)", borderRadius: 8, border: "1px solid rgba(58,255,26,0.08)" }}>
+          {r.image && <img src={r.image} alt={r.name} style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover" }} />}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, color: "#e0e8f0", fontWeight: 600 }}>{r.name} {r.brand && <span style={{ fontSize: 10, opacity: 0.5 }}>({r.brand})</span>}</div>
+            <div style={{ display: "flex", gap: 12, marginTop: 4, fontSize: 11 }}>
+              {r.calories != null && <span style={{ color: "#ffd700" }}>{Math.round(r.calories)} kcal</span>}
+              {r.protein != null && <span style={{ color: "#3aff1a" }}>P: {r.protein}g</span>}
+              {r.carbs != null && <span style={{ color: "#7ecfff" }}>C: {r.carbs}g</span>}
+              {r.fat != null && <span style={{ color: "#ff9f7e" }}>F: {r.fat}g</span>}
+            </div>
+            {r.nutriscore && <div style={{ marginTop: 3, fontSize: 10, opacity: 0.5 }}>Nutriscore: {r.nutriscore.toUpperCase()} | per {r.serving}</div>}
+          </div>
+        </div>
+      ))}
+      {data?.source && <div style={{ fontSize: 9, opacity: 0.3, marginTop: 4 }}>Source: {data.source}</div>}
+    </div>
+  );
+}
+
+/* ── Briefing Panel ──────────────────────────────────────────────── */
+function BriefingPanel({ data, expanded, onToggle }) {
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`} style={{ borderColor: "rgba(255,215,0,0.2)" }}>
+      <div className="panel-header"><span>DAILY BRIEFING</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      {data?.datetime && (
+        <div style={{ marginBottom: 12, padding: 8, background: "rgba(255,215,0,0.04)", borderRadius: 8, border: "1px solid rgba(255,215,0,0.1)" }}>
+          <div style={{ fontSize: 14, color: "#ffd700", fontWeight: 600 }}>{data.datetime.date}</div>
+          <div style={{ fontSize: 12, opacity: 0.5 }}>{data.datetime.time}</div>
+        </div>
+      )}
+      {data?.weather && (
+        <div style={{ marginBottom: 10, padding: 8, background: "rgba(126,207,255,0.04)", borderRadius: 8, border: "1px solid rgba(126,207,255,0.08)" }}>
+          <div style={{ fontSize: 11, color: "#7ecfff", letterSpacing: 1, marginBottom: 4 }}>WEATHER</div>
+          <div style={{ fontSize: 13 }}>{data.weather.city}: {Math.round(data.weather.temp)}°F — {data.weather.desc}</div>
+          <div style={{ fontSize: 10, opacity: 0.4 }}>Humidity: {data.weather.humidity}% | Wind: {data.weather.wind} mph</div>
+        </div>
+      )}
+      {data?.news && data.news.length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: "#ff9f7e", letterSpacing: 1, marginBottom: 6 }}>TOP HEADLINES</div>
+          {data.news.map((n, i) => (
+            <div key={i} style={{ marginBottom: 6, fontSize: 12 }}>
+              <a href={n.url} target="_blank" rel="noopener" style={{ color: "#e0e8f0", textDecoration: "none" }}>{n.title}</a>
+              <span style={{ fontSize: 9, opacity: 0.3, marginLeft: 6 }}>{n.source}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {data?.stocks && data.stocks.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, color: "#3aff1a", letterSpacing: 1, marginBottom: 6 }}>MARKET SNAPSHOT</div>
+          <div style={{ display: "flex", gap: 12 }}>
+            {data.stocks.map((s, i) => (
+              <div key={i} style={{ padding: "6px 10px", background: "rgba(58,255,26,0.04)", borderRadius: 6, border: "1px solid rgba(58,255,26,0.08)" }}>
+                <div style={{ fontSize: 12, fontWeight: 600 }}>{s.symbol}</div>
+                <div style={{ fontSize: 13, color: "#e0e8f0" }}>${s.price?.toFixed(2) || "N/A"}</div>
+                {s.change != null && <div style={{ fontSize: 10, color: s.change >= 0 ? "#3aff1a" : "#ff4a4a" }}>{s.change >= 0 ? "+" : ""}{s.change?.toFixed(2)}%</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Screen Share Panel ──────────────────────────────────────────── */
+function ScreenSharePanel({ data, expanded, onToggle }) {
+  const [sharing, setSharing] = useState(false);
+  const [screenshot, setScreenshot] = useState(null);
+  const [analysis, setAnalysis] = useState(data?.analysis || null);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
+  async function startCapture() {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: false });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setSharing(true);
+      stream.getVideoTracks()[0].onended = () => stopCapture();
+    } catch (err) {
+      setAnalysis("Screen sharing was denied or not supported in this browser.");
+    }
+  }
+
+  function captureFrame() {
+    if (!videoRef.current || !sharing) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    canvas.getContext("2d").drawImage(videoRef.current, 0, 0);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+    setScreenshot(dataUrl);
+    analyzeScreen(dataUrl);
+  }
+
+  async function analyzeScreen(imgData) {
+    setAnalysis("Analyzing your screen...");
+    try {
+      const res = await fetch("/api/tools/vision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imgData, prompt: "Describe what you see on this screen in detail. What application is open? What is the user working on?" }),
+      });
+      const d = await res.json();
+      setAnalysis(d.analysis || d.description || "Could not analyze the screen.");
+    } catch {
+      setAnalysis("Failed to analyze screen. Vision API may be unavailable.");
+    }
+  }
+
+  function stopCapture() {
+    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    setSharing(false);
+  }
+
+  return (
+    <div className={`tool-panel${expanded ? " expanded" : ""}`} style={{ borderColor: "rgba(126,207,255,0.2)" }}>
+      <div className="panel-header"><span>SCREEN ANALYSIS</span><ExpandBtn expanded={expanded} onClick={onToggle} /></div>
+      <video ref={videoRef} autoPlay muted playsInline style={{ width: "100%", borderRadius: 8, marginBottom: 8, display: sharing ? "block" : "none", maxHeight: 200 }} />
+      <div style={{ display: "flex", gap: 8 }}>
+        {!sharing ? (
+          <button onClick={startCapture} style={{ background: "rgba(126,207,255,0.1)", border: "1px solid rgba(126,207,255,0.3)", color: "#7ecfff", padding: "8px 16px", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>SHARE SCREEN</button>
+        ) : (
+          <>
+            <button onClick={captureFrame} style={{ background: "rgba(58,255,26,0.1)", border: "1px solid rgba(58,255,26,0.3)", color: "#3aff1a", padding: "8px 16px", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>CAPTURE & ANALYZE</button>
+            <button onClick={stopCapture} style={{ background: "rgba(255,74,74,0.1)", border: "1px solid rgba(255,74,74,0.2)", color: "#ff4a4a", padding: "8px 12px", borderRadius: 8, cursor: "pointer" }}>STOP</button>
+          </>
+        )}
+      </div>
+      {screenshot && <img src={screenshot} alt="Screen capture" style={{ width: "100%", borderRadius: 8, marginTop: 8, opacity: 0.8 }} />}
+      {analysis && <div style={{ marginTop: 10, fontSize: 12, color: "#e0e8f0", lineHeight: 1.5, padding: 8, background: "rgba(0,0,0,0.2)", borderRadius: 6 }}>{analysis}</div>}
+    </div>
+  );
+}
+
 function SystemPanel({ expanded, onToggle }) {
   const [stats, setStats] = useState(null);
   useEffect(() => {
@@ -715,6 +862,9 @@ function ToolPanel({ tool, expanded, onToggle, onVisionCapture }) {
     case "vision_trigger": return <VisionPanel data={{}} expanded={expanded} onToggle={onToggle} onCapture={onVisionCapture} />;
     case "system": return <SystemPanel expanded={expanded} onToggle={onToggle} />;
     case "file_download": return <FileDownloadPanel data={d} expanded={expanded} onToggle={onToggle} />;
+    case "nutrition": return <NutritionPanel data={d} expanded={expanded} onToggle={onToggle} />;
+    case "briefing": return <BriefingPanel data={d} expanded={expanded} onToggle={onToggle} />;
+    case "screen_share": return <ScreenSharePanel data={d} expanded={expanded} onToggle={onToggle} />;
     default: return null;
   }
 }

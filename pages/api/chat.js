@@ -333,6 +333,20 @@ function extractLearningFacts(userMsg) {
     const m = userMsg.match(pat);
     if (m) facts.push(m[0].trim());
   }
+  // Personality learner — detect communication style preferences
+  const lower = userMsg.toLowerCase();
+  if (/\b(shorter|brief|tldr|too long|concise|summarize)\b/.test(lower)) {
+    facts.push("User prefers shorter, more concise responses");
+  }
+  if (/\b(more detail|explain|elaborate|tell me more|expand on)\b/.test(lower)) {
+    facts.push("User prefers detailed, thorough responses");
+  }
+  if (/\b(casual|chill|relaxed|informal)\b/.test(lower) && /\b(talk|speak|respond|be)\b/.test(lower)) {
+    facts.push("User prefers casual, informal communication style");
+  }
+  if (/\b(professional|formal|serious)\b/.test(lower) && /\b(talk|speak|respond|be)\b/.test(lower)) {
+    facts.push("User prefers formal, professional communication style");
+  }
   return facts;
 }
 
@@ -526,6 +540,38 @@ export default async function handler(req, res) {
         toolResult = { type: "memory_clear", data: { cleared: true } };
         quickReply = "All memories erased, sir. Starting fresh.";
         break;
+      case "nutrition":
+        if (data) {
+          try {
+            const nRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/tools/nutrition`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: data }) });
+            const nData = await nRes.json();
+            if (nData.ok) {
+              toolResult = { type: "nutrition", data: nData.data };
+              const top = nData.data?.results?.[0];
+              quickReply = top ? `${top.name}: approximately ${Math.round(top.calories || 0)} kcal per ${top.serving || "100g"}, sir.` : `I couldn't find nutrition data for "${data}", sir.`;
+            }
+          } catch { quickReply = "Nutrition lookup failed, sir."; }
+        }
+        break;
+      case "briefing": {
+        try {
+          const bRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/tools/briefing`, { method: "POST", headers: { "Content-Type": "application/json" } });
+          const bData = await bRes.json();
+          if (bData.ok) {
+            toolResult = { type: "briefing", data: bData.data };
+            const parts = [];
+            if (bData.data.weather) parts.push(`${bData.data.weather.city}: ${Math.round(bData.data.weather.temp)}°F, ${bData.data.weather.desc}`);
+            if (bData.data.news?.[0]) parts.push(`Top story: ${bData.data.news[0].title}`);
+            if (bData.data.stocks?.[0]) parts.push(`${bData.data.stocks[0].symbol}: $${bData.data.stocks[0].price?.toFixed(2)}`);
+            quickReply = `Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}, sir. ${parts.join(". ")}.`;
+          }
+        } catch { quickReply = "I couldn't fetch your daily briefing, sir."; }
+        break;
+      }
+      case "screen_share":
+        toolResult = { type: "screen_share", data: {} };
+        quickReply = "Screen sharing panel is ready, sir. Click 'Share Screen' to begin.";
+        break;
     }
   } catch (e) {
     console.error("Tool error:", e.message);
@@ -548,6 +594,8 @@ export default async function handler(req, res) {
       image: "Image generated, sir.", define: "Here's the definition, sir.",
       qrcode: "QR code generated, sir.", execute: "Code executed, sir.",
       gallery: "Here's your gallery, sir.", vision_trigger: "Camera ready, sir.",
+      nutrition: "Here's the nutrition info, sir.", briefing: "Here's your daily briefing, sir.",
+      screen_share: "Screen sharing panel ready, sir.",
     };
     quickReply = defaults[toolResult.type] || "Here are the results, sir.";
   }
@@ -575,6 +623,7 @@ export default async function handler(req, res) {
   const fullSystemPrompt =
     systemPrompt +
     " You have real tools that show results on screen. Reference them naturally. Keep responses concise for speech, no markdown." +
+    " SMART PLANNER: When the user asks you to 'build', 'create', 'make', or 'design' something complex (like a website, app, project, or system), do NOT start building immediately. First ask 2-3 brief clarifying questions to understand their requirements (e.g., 'What style are you going for, sir?', 'Any specific features you want?', 'Who is this for?'). Then proceed with a plan. For simple requests, skip the questions." +
     toolContext + learningCtx + memoryCtx +
     (isCodeRequest ? " Write clean, well-commented code." : "");
 
