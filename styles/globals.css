@@ -909,3 +909,322 @@ html, body { height: 100%; overflow: hidden; background: #04070f; color: #e0e8f0
 .tool-col::-webkit-scrollbar-thumb:hover {
   background: rgba(126,207,255,0.25);
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   NEW FEATURES CSS
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Voice Command HUD ───────────────────────────────────────────── */
+.voice-hud-modal {
+  background: rgba(4,7,15,0.95);
+  border: 1px solid rgba(126,207,255,0.15);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 640px;
+  width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.voice-hud-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 16px;
+}
+.voice-cmd-item {
+  padding: 10px 14px;
+  background: rgba(126,207,255,0.04);
+  border: 1px solid rgba(126,207,255,0.08);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.voice-cmd-item:hover {
+  background: rgba(126,207,255,0.1);
+  border-color: rgba(126,207,255,0.3);
+  transform: translateY(-1px);
+}
+.voice-cmd-text {
+  font-size: 13px;
+  color: #7ecfff;
+  font-family: 'Fira Code', monospace;
+  margin-bottom: 3px;
+}
+.voice-cmd-desc {
+  font-size: 10px;
+  opacity: 0.4;
+}
+
+/* ── Code Playground ─────────────────────────────────────────────── */
+.code-playground-modal {
+  background: rgba(4,7,15,0.97);
+  border: 1px solid rgba(126,207,255,0.2);
+  border-radius: 16px;
+  width: 90vw;
+  max-width: 700px;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.playground-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(126,207,255,0.1);
+  font-size: 14px;
+  color: #7ecfff;
+  letter-spacing: 1px;
+}
+.playground-editor {
+  width: 100%;
+  min-height: 200px;
+  max-height: 300px;
+  background: rgba(0,0,0,0.4);
+  border: none;
+  padding: 16px;
+  color: #e0e8f0;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 13px;
+  resize: vertical;
+  outline: none;
+  line-height: 1.6;
+}
+.playground-editor::placeholder { color: rgba(126,207,255,0.2); }
+.playground-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid rgba(126,207,255,0.1);
+}
+.playground-run {
+  background: rgba(58,255,26,0.1);
+  border: 1px solid rgba(58,255,26,0.3);
+  color: #3aff1a;
+  padding: 8px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+}
+.playground-run:hover { background: rgba(58,255,26,0.2); }
+.playground-run:disabled { opacity: 0.5; }
+.playground-clear {
+  background: rgba(255,74,74,0.1);
+  border: 1px solid rgba(255,74,74,0.2);
+  color: #ff4a4a;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+.playground-clear:hover { background: rgba(255,74,74,0.2); }
+.playground-output {
+  padding: 14px 18px;
+  border-top: 1px solid rgba(126,207,255,0.1);
+  background: rgba(0,0,0,0.3);
+  max-height: 200px;
+  overflow: auto;
+  font-family: 'Fira Code', monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+/* ── Context Sidebar ─────────────────────────────────────────────── */
+.context-sidebar, .automations-sidebar {
+  position: fixed;
+  top: 52px;
+  left: 0;
+  bottom: 0;
+  width: 300px;
+  background: rgba(4,7,15,0.97);
+  border-right: 1px solid rgba(126,207,255,0.1);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  animation: slideInLeft 0.2s ease;
+}
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.context-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+.context-fact {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(126,207,255,0.06);
+  font-size: 12px;
+  color: rgba(224,232,240,0.7);
+  line-height: 1.5;
+}
+
+/* ── Automation Items ────────────────────────────────────────────── */
+.automation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(126,207,255,0.06);
+}
+.automation-info { flex: 1; }
+.automation-name {
+  font-size: 13px;
+  color: #7ecfff;
+  margin-bottom: 2px;
+}
+.automation-meta {
+  font-size: 10px;
+  opacity: 0.4;
+}
+.automation-controls {
+  display: flex;
+  gap: 4px;
+}
+.auto-toggle {
+  background: rgba(126,207,255,0.06);
+  border: 1px solid rgba(126,207,255,0.15);
+  color: rgba(126,207,255,0.4);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.auto-toggle.active {
+  background: rgba(58,255,26,0.1);
+  border-color: rgba(58,255,26,0.3);
+  color: #3aff1a;
+}
+.auto-remove {
+  background: none;
+  border: 1px solid rgba(255,74,74,0.2);
+  color: #ff4a4a;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+/* ── Theme Picker ────────────────────────────────────────────────── */
+.theme-picker-wrapper { position: relative; }
+.theme-btn {
+  background: transparent;
+  border: 1px solid rgba(126,207,255,0.15);
+  color: rgba(126,207,255,0.5);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-btn:hover { background: rgba(126,207,255,0.1); color: #7ecfff; }
+.theme-dropdown {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  background: rgba(4,7,15,0.97);
+  border: 1px solid rgba(126,207,255,0.15);
+  border-radius: 10px;
+  padding: 4px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  min-width: 100px;
+}
+.theme-option {
+  background: none;
+  border: none;
+  color: #e0e8f0;
+  padding: 8px 14px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 6px;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+.theme-option:hover { background: rgba(126,207,255,0.08); }
+.theme-option.active { color: #3aff1a; background: rgba(58,255,26,0.06); }
+
+/* ── Workspace Tabs ──────────────────────────────────────────────── */
+.workspace-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(126,207,255,0.06);
+}
+.workspace-tab {
+  background: rgba(126,207,255,0.04);
+  border: 1px solid rgba(126,207,255,0.08);
+  color: rgba(224,232,240,0.5);
+  padding: 4px 14px;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s;
+}
+.workspace-tab.active {
+  background: rgba(126,207,255,0.1);
+  color: #7ecfff;
+  border-color: rgba(126,207,255,0.2);
+  border-bottom-color: transparent;
+}
+.workspace-tab:hover { background: rgba(126,207,255,0.08); color: #7ecfff; }
+.workspace-add {
+  background: none;
+  border: 1px dashed rgba(126,207,255,0.15);
+  color: rgba(126,207,255,0.3);
+  min-width: 28px;
+  padding: 4px 8px;
+}
+.workspace-add:hover { border-color: rgba(126,207,255,0.4); color: #7ecfff; }
+
+/* ── Hidden Utility ──────────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   THEME: Dark (no scanlines, softer colors)
+   ══════════════════════════════════════════════════════════════════════ */
+.theme-dark .scanlines { display: none; }
+.theme-dark .jarvis-header { background: rgba(20,25,35,0.98); }
+.theme-dark .orb-core { filter: brightness(0.8) saturate(0.6); }
+.theme-dark .tool-panel { background: rgba(20,25,35,0.95); border-color: rgba(126,207,255,0.08); }
+.theme-dark .chat-messages { background: transparent; }
+.theme-dark .bubble.assistant { background: rgba(20,25,35,0.9); }
+.theme-dark .bubble.user { background: rgba(126,207,255,0.08); }
+.theme-dark .status-bar { background: rgba(20,25,35,0.9); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   THEME: Minimal (clean, light-on-dark, no effects)
+   ══════════════════════════════════════════════════════════════════════ */
+.theme-minimal .scanlines { display: none; }
+.theme-minimal .jarvis-header { background: rgba(15,18,25,0.98); border-bottom: 1px solid rgba(255,255,255,0.06); }
+.theme-minimal .orb-ring { display: none; }
+.theme-minimal .orb-pulse { display: none; }
+.theme-minimal .orb-container { transform: scale(0.7); }
+.theme-minimal .tool-panel { background: rgba(15,18,25,0.95); border-color: rgba(255,255,255,0.06); border-radius: 8px; }
+.theme-minimal .bubble.assistant { background: rgba(15,18,25,0.95); border-color: rgba(255,255,255,0.06); }
+.theme-minimal .bubble.user { background: rgba(126,207,255,0.06); }
+.theme-minimal .status-bar { background: rgba(15,18,25,0.9); }
+.theme-minimal .holo-overlay { display: none; }
+.theme-minimal .agent-status-panel { border-color: rgba(255,255,255,0.06); }
+
+/* ── Responsive for new features ─────────────────────────────────── */
+@media (max-width: 600px) {
+  .voice-hud-grid { grid-template-columns: 1fr; }
+  .code-playground-modal { width: 95vw; }
+  .context-sidebar, .automations-sidebar { width: 260px; }
+  .workspace-tabs { overflow-x: auto; }
+  .theme-btn, .header-left .sidebar-toggle:nth-child(n+3) { display: none; }
+}

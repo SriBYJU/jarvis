@@ -930,6 +930,22 @@ export default function Home() {
   const [agentStatus, setAgentStatus] = useState("");
   const [agentPlan, setAgentPlan] = useState(null);
 
+  // ── NEW FEATURE STATES ──────────────────────────────────────────
+  const [automations, setAutomations] = useState([]);
+  const [showAutomations, setShowAutomations] = useState(false);
+  const [codePlayground, setCodePlayground] = useState({ code: "", output: "", running: false });
+  const [showCodePlayground, setShowCodePlayground] = useState(false);
+  const [workspaces, setWorkspaces] = useState([{ id: "main", name: "Main" }]);
+  const [activeWorkspace, setActiveWorkspace] = useState("main");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [showContext, setShowContext] = useState(false);
+  const [learningFacts, setLearningFacts] = useState([]);
+  const [theme, setTheme] = useState("hud");
+  const [showVoiceHUD, setShowVoiceHUD] = useState(false);
+  const [pinnedTools, setPinnedTools] = useState(["weather", "news", "camera", "stocks"]);
+  const [showThemePicker, setShowThemePicker] = useState(false);
+  const automationTimers = useRef({});
+
   const p = PERSONAS[persona];
 
   const addSystemMessage = useCallback((text) => {
@@ -937,6 +953,67 @@ export default function Home() {
   }, []);
 
   useReminderChecker(addSystemMessage);
+
+  // ── Desktop Notifications ──────────────────────────────────────
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") setNotificationsEnabled(true);
+  }, []);
+
+  function requestNotifications() {
+    if (typeof Notification === "undefined") return;
+    Notification.requestPermission().then(p => { if (p === "granted") setNotificationsEnabled(true); });
+  }
+
+  function sendNotification(title, body) {
+    if (!notificationsEnabled || typeof Notification === "undefined") return;
+    try { new Notification(title, { body, icon: "/favicon.ico" }); } catch {}
+  }
+
+  // ── Automation Runner ──────────────────────────────────────────
+  useEffect(() => {
+    // Clear old timers
+    Object.values(automationTimers.current).forEach(clearInterval);
+    automationTimers.current = {};
+    // Set up active automations
+    automations.filter(a => a.active).forEach(a => {
+      automationTimers.current[a.id] = setInterval(() => {
+        sendNotification("JARVIS Automation", `Running: ${a.name}`);
+        smartSendFromAutomation(a.command);
+      }, a.intervalMs);
+    });
+    return () => Object.values(automationTimers.current).forEach(clearInterval);
+  }, [automations]);
+
+  // Load automations and learning facts from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("jarvis-automations");
+      if (saved) setAutomations(JSON.parse(saved));
+      const savedTheme = localStorage.getItem("jarvis-theme");
+      if (savedTheme) setTheme(savedTheme);
+      const savedPins = localStorage.getItem("jarvis-pinned-tools");
+      if (savedPins) setPinnedTools(JSON.parse(savedPins));
+    } catch {}
+  }, []);
+
+  // Persist automations
+  useEffect(() => {
+    try { localStorage.setItem("jarvis-automations", JSON.stringify(automations)); } catch {}
+  }, [automations]);
+
+  // Persist theme
+  useEffect(() => {
+    try { localStorage.setItem("jarvis-theme", theme); } catch {}
+  }, [theme]);
+
+  // Fetch learning context
+  function fetchLearningFacts() {
+    fetch("/api/tools/memory").then(r => r.json()).then(d => {
+      setLearningFacts(d.data || d.memories || []);
+    }).catch(() => {});
+  }
+
+  useEffect(() => { fetchLearningFacts(); }, []);
 
   useEffect(() => {
     synthRef.current = window.speechSynthesis;
@@ -1330,18 +1407,108 @@ export default function Home() {
     }
   }
 
+  // ── Code Playground ─────────────────────────────────────────────
+  function runCodePlayground() {
+    setCodePlayground(prev => ({ ...prev, running: true, output: "" }));
+    try {
+      const logs = [];
+      const fakeConsole = { log: (...a) => logs.push(a.map(String).join(" ")), error: (...a) => logs.push("ERROR: " + a.map(String).join(" ")), warn: (...a) => logs.push("WARN: " + a.map(String).join(" ")) };
+      const fn = new Function("console", codePlayground.code);
+      const result = fn(fakeConsole);
+      const output = logs.length > 0 ? logs.join("\n") : (result !== undefined ? String(result) : "(no output)");
+      setCodePlayground(prev => ({ ...prev, output, running: false }));
+    } catch (e) {
+      setCodePlayground(prev => ({ ...prev, output: "Error: " + e.message, running: false }));
+    }
+  }
+
+  // ── Conversation Export ─────────────────────────────────────────
+  function exportConversation(format) {
+    let content = "";
+    const title = messages.find(m => m.role === "user")?.content?.slice(0, 50) || "JARVIS Conversation";
+    if (format === "markdown") {
+      content = `# ${title}\n\n*Exported from J.A.R.V.I.S. on ${new Date().toLocaleString()}*\n\n---\n\n`;
+      messages.forEach(m => {
+        const role = m.role === "user" ? "**You**" : m.role === "assistant" ? `**${p.name}**` : "*System*";
+        const time = m.timestamp ? ` *(${formatTime(m.timestamp)})*` : "";
+        content += `${role}${time}:\n${m.content}\n\n`;
+      });
+    } else {
+      content = messages.map(m => `[${m.role.toUpperCase()}${m.timestamp ? " " + formatTime(m.timestamp) : ""}]: ${m.content}`).join("\n\n");
+    }
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `jarvis-chat-${Date.now()}.${format === "markdown" ? "md" : "txt"}`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+
+  // ── Automation Management ───────────────────────────────────────
+  function addAutomation(name, command, intervalMinutes) {
+    const auto = { id: uid(), name, command, intervalMs: intervalMinutes * 60000, active: true, createdAt: Date.now(), lastRun: null };
+    setAutomations(prev => [...prev, auto]);
+    addSystemMessage(`Automation created: "${name}" — runs every ${intervalMinutes} minutes.`);
+    sendNotification("JARVIS Automation", `Created: ${name}`);
+  }
+
+  function toggleAutomation(id) {
+    setAutomations(prev => prev.map(a => a.id === id ? { ...a, active: !a.active } : a));
+  }
+
+  function removeAutomation(id) {
+    setAutomations(prev => prev.filter(a => a.id !== id));
+  }
+
+  function smartSendFromAutomation(text) {
+    sendToolChat(text);
+  }
+
   function smartSend(text) {
     if (!text?.trim()) return;
     const fileCtx = uploadedFile;
     setUploadedFile(null);
+    const lower = text.toLowerCase().trim();
 
     // System diagnostics shortcut
-    const lower = text.toLowerCase().trim();
     if (/(?:system\s+(?:status|diagnostics|info)|show\s+(?:diagnostics|system))/i.test(lower)) {
       setTool({ type: "system", data: {} });
       setMessages((prev) => [...prev, { role: "user", content: text }, { role: "assistant", content: "Pulling up system diagnostics now, sir." }]);
       setInput("");
       return;
+    }
+
+    // Automation triggers
+    const autoMatch = lower.match(/(?:automate|schedule|every)\s+(.+?)\s+every\s+(\d+)\s*(min|minute|hour|hr)/i);
+    if (autoMatch) {
+      const cmd = autoMatch[1].trim();
+      const num = parseInt(autoMatch[2]);
+      const unit = autoMatch[3].toLowerCase();
+      const mins = unit.startsWith("h") ? num * 60 : num;
+      addAutomation(cmd, cmd, mins);
+      setMessages(prev => [...prev, { role: "user", content: text }, { role: "assistant", content: `Done, sir. I've set up an automation to ${cmd} every ${mins} minutes. You can manage your automations from the sidebar.`, timestamp: Date.now() }]);
+      setInput("");
+      return;
+    }
+
+    // Research mode trigger
+    if (/(?:research|deep\s*dive|investigate|analyze\s+everything\s+about)\s+/i.test(lower) && !agentMode) {
+      setAgentMode(true);
+      sendAgentChat(text);
+      return;
+    }
+
+    // Code playground trigger
+    if (/^(?:run|execute|eval)\s*```/i.test(lower) || /^```(?:js|javascript)/i.test(lower)) {
+      const codeMatch = text.match(/```(?:js|javascript)?\n?([\s\S]*?)```/);
+      if (codeMatch) {
+        setCodePlayground({ code: codeMatch[1], output: "", running: false });
+        setShowCodePlayground(true);
+        setMessages(prev => [...prev, { role: "user", content: text }, { role: "assistant", content: "Code playground is ready, sir. Click Run to execute." }]);
+        setInput("");
+        return;
+      }
     }
 
     if (agentMode) {
@@ -1433,8 +1600,111 @@ export default function Home() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
 
-      <div className="scanlines" />
+      <div className={`scanlines${theme === "minimal" ? " hidden" : ""}`} />
       {isDragging && <div className="drag-overlay"><div className="drag-overlay-inner">Drop file to upload</div></div>}
+
+      {/* Voice Command HUD */}
+      {showVoiceHUD && (
+        <div className="cmd-palette-overlay" onClick={() => setShowVoiceHUD(false)}>
+          <div className="voice-hud-modal" onClick={e => e.stopPropagation()}>
+            <div className="shortcuts-title">Voice Commands</div>
+            <div className="voice-hud-grid">
+              {[
+                { cmd: "Hey JARVIS", desc: "Activate JARVIS" },
+                { cmd: "Hey FRIDAY", desc: "Switch to FRIDAY" },
+                { cmd: "Hey EDITH", desc: "Switch to EDITH" },
+                { cmd: "Weather in [city]", desc: "Check weather" },
+                { cmd: "Latest news", desc: "Get headlines" },
+                { cmd: "Play [video]", desc: "YouTube search" },
+                { cmd: "Stock price [ticker]", desc: "Stock data" },
+                { cmd: "Set timer for [time]", desc: "Countdown" },
+                { cmd: "Remind me to [task]", desc: "Set reminder" },
+                { cmd: "Translate [text] to [lang]", desc: "Translation" },
+                { cmd: "Search for [query]", desc: "Web search" },
+                { cmd: "Generate image of [desc]", desc: "AI images" },
+                { cmd: "Open camera", desc: "Vision analysis" },
+                { cmd: "System diagnostics", desc: "System info" },
+                { cmd: "Research [topic]", desc: "Deep research" },
+                { cmd: "Automate [task] every [N] minutes", desc: "Schedule task" },
+              ].map(v => (
+                <div key={v.cmd} className="voice-cmd-item" onClick={() => { setShowVoiceHUD(false); setInput(v.cmd); inputRef.current?.focus(); }}>
+                  <div className="voice-cmd-text">{v.cmd}</div>
+                  <div className="voice-cmd-desc">{v.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Code Playground Modal */}
+      {showCodePlayground && (
+        <div className="cmd-palette-overlay" onClick={() => setShowCodePlayground(false)}>
+          <div className="code-playground-modal" onClick={e => e.stopPropagation()}>
+            <div className="playground-header">
+              <span>Code Playground (JavaScript)</span>
+              <button onClick={() => setShowCodePlayground(false)} className="sidebar-close">X</button>
+            </div>
+            <textarea
+              className="playground-editor"
+              value={codePlayground.code}
+              onChange={e => setCodePlayground(prev => ({ ...prev, code: e.target.value }))}
+              placeholder="// Write JavaScript here...\nconsole.log('Hello JARVIS!');"
+              spellCheck={false}
+            />
+            <div className="playground-actions">
+              <button className="playground-run" onClick={runCodePlayground} disabled={codePlayground.running}>
+                {codePlayground.running ? "Running..." : "RUN"}
+              </button>
+              <button className="playground-clear" onClick={() => setCodePlayground({ code: "", output: "", running: false })}>Clear</button>
+            </div>
+            {codePlayground.output && (
+              <div className="playground-output">
+                <div style={{ fontSize: 10, color: "#7ecfff", letterSpacing: 1, marginBottom: 4 }}>OUTPUT</div>
+                <pre style={{ margin: 0, color: codePlayground.output.startsWith("Error") ? "#ff4a4a" : "#3aff1a" }}>{codePlayground.output}</pre>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Smart Context Sidebar */}
+      {showContext && (
+        <div className="context-sidebar">
+          <div className="sidebar-header"><span>What JARVIS Knows</span><button onClick={() => setShowContext(false)} className="sidebar-close">X</button></div>
+          <button className="new-session-btn" onClick={() => { fetchLearningFacts(); }}>Refresh</button>
+          <div className="context-list">
+            {learningFacts.length === 0 && <div style={{ padding: 16, opacity: 0.4, textAlign: "center" }}>No facts learned yet. Chat with JARVIS to build context.</div>}
+            {learningFacts.map((f, i) => (
+              <div key={i} className="context-fact">
+                <span>{f.content || JSON.stringify(f)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Automations Sidebar */}
+      {showAutomations && (
+        <div className="automations-sidebar">
+          <div className="sidebar-header"><span>Automations</span><button onClick={() => setShowAutomations(false)} className="sidebar-close">X</button></div>
+          <div className="context-list">
+            {automations.length === 0 && <div style={{ padding: 16, opacity: 0.4, textAlign: "center" }}>No automations yet. Say &quot;automate [task] every [N] minutes&quot;</div>}
+            {automations.map(a => (
+              <div key={a.id} className="automation-item">
+                <div className="automation-info">
+                  <div className="automation-name">{a.name}</div>
+                  <div className="automation-meta">Every {a.intervalMs / 60000} min | {a.active ? "Active" : "Paused"}</div>
+                </div>
+                <div className="automation-controls">
+                  <button onClick={() => toggleAutomation(a.id)} className={`auto-toggle${a.active ? " active" : ""}`}>{a.active ? "ON" : "OFF"}</button>
+                  <button onClick={() => removeAutomation(a.id)} className="auto-remove">X</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Command Palette */}
       {showCommandPalette && (
@@ -1499,12 +1769,14 @@ export default function Home() {
         </div>
       )}
 
-      <div className="jarvis-root">
+      <div className={`jarvis-root theme-${theme}`}>
         {/* Header */}
         <header className="jarvis-header">
           <div className="header-left">
-            <button className={`sidebar-toggle${showSessions ? " active" : ""}`} onClick={() => { setShowSessions(!showSessions); setShowProjects(false); }} title="Past Sessions">S</button>
-            <button className={`sidebar-toggle${showProjects ? " active" : ""}`} onClick={() => { setShowProjects(!showProjects); setShowSessions(false); }} title="Projects">P</button>
+            <button className={`sidebar-toggle${showSessions ? " active" : ""}`} onClick={() => { setShowSessions(!showSessions); setShowProjects(false); setShowAutomations(false); setShowContext(false); }} title="Past Sessions">S</button>
+            <button className={`sidebar-toggle${showProjects ? " active" : ""}`} onClick={() => { setShowProjects(!showProjects); setShowSessions(false); setShowAutomations(false); setShowContext(false); }} title="Projects">P</button>
+            <button className={`sidebar-toggle${showAutomations ? " active" : ""}`} onClick={() => { setShowAutomations(!showAutomations); setShowSessions(false); setShowProjects(false); setShowContext(false); }} title="Automations">A</button>
+            <button className={`sidebar-toggle${showContext ? " active" : ""}`} onClick={() => { setShowContext(!showContext); setShowSessions(false); setShowProjects(false); setShowAutomations(false); fetchLearningFacts(); }} title="What JARVIS Knows">C</button>
           </div>
           <div className="header-center">
             {Object.keys(PERSONAS).map((k) => (
@@ -1545,7 +1817,22 @@ export default function Home() {
             <button className={`wake-btn${wakeWordOn ? " active" : ""}`} onClick={() => setWakeWordOn(!wakeWordOn)}>
               {wakeWordOn ? "WAKE ON" : "WAKE"}
             </button>
+            <div className="theme-picker-wrapper">
+              <button className="theme-btn" onClick={() => setShowThemePicker(!showThemePicker)} title="Theme">T</button>
+              {showThemePicker && (
+                <div className="theme-dropdown">
+                  {["hud", "dark", "minimal"].map(t => (
+                    <button key={t} className={`theme-option${theme === t ? " active" : ""}`} onClick={() => { setTheme(t); setShowThemePicker(false); }}>
+                      {t === "hud" ? "HUD" : t === "dark" ? "Dark" : "Minimal"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button className="shortcut-btn" onClick={() => setShowVoiceHUD(true)} title="Voice Commands">V</button>
+            <button className="shortcut-btn" onClick={() => setShowCodePlayground(true)} title="Code Playground">{"</>"}</button>
             <button className="shortcut-btn" onClick={() => setShowShortcuts(true)} title="Keyboard shortcuts (Ctrl+?)">?</button>
+            {!notificationsEnabled && <button className="shortcut-btn" onClick={requestNotifications} title="Enable notifications">N</button>}
             <div className="status-dot" style={{ background: phase === "idle" ? "#3aff1a" : "#ffd700" }} />
           </div>
         </header>
@@ -1579,8 +1866,30 @@ export default function Home() {
 
             {/* Quick Tools */}
             <div className="quick-tools">
-              <button className="qtool-btn" onClick={() => { const t = { type: "vision_trigger", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }} title="Camera">CAM</button>
-              <button className="qtool-btn" onClick={() => { const t = { type: "system", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }} title="System Info">SYS</button>
+              {pinnedTools.map(pt => {
+                const TOOL_MAP = {
+                  weather: { label: "WTR", action: "Weather in my area" },
+                  news: { label: "NEWS", action: "Latest news" },
+                  camera: { label: "CAM", action: "__camera__" },
+                  stocks: { label: "STK", action: "Stock price AAPL" },
+                  map: { label: "MAP", action: "Show map of New York" },
+                  joke: { label: "JKE", action: "Tell me a joke" },
+                  youtube: { label: "YT", action: "Play video " },
+                  wiki: { label: "WIKI", action: "Wiki " },
+                  system: { label: "SYS", action: "__system__" },
+                  timer: { label: "TMR", action: "Set timer for 5 minutes" },
+                  image: { label: "IMG", action: "Generate image of " },
+                  translate: { label: "TRN", action: "Translate " },
+                };
+                const tm = TOOL_MAP[pt] || { label: pt.slice(0, 3).toUpperCase(), action: pt };
+                return (
+                  <button key={pt} className="qtool-btn" onClick={() => {
+                    if (tm.action === "__camera__") { const t = { type: "vision_trigger", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }
+                    else if (tm.action === "__system__") { const t = { type: "system", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }
+                    else { setInput(tm.action); inputRef.current?.focus(); }
+                  }} title={pt}>{tm.label}</button>
+                );
+              })}
             </div>
           </div>
 
@@ -1646,13 +1955,28 @@ export default function Home() {
                 <button onClick={() => setUploadedFile(null)} style={{ marginLeft: 8, background: "none", border: "none", color: "#ff4a4a", cursor: "pointer" }}>x</button>
               </div>
             )}
+            {/* Workspace Tabs */}
+            <div className="workspace-tabs">
+              {workspaces.map(w => (
+                <button key={w.id} className={`workspace-tab${activeWorkspace === w.id ? " active" : ""}`} onClick={() => setActiveWorkspace(w.id)}>{w.name}</button>
+              ))}
+              <button className="workspace-tab workspace-add" onClick={() => {
+                const id = uid();
+                const name = `Tab ${workspaces.length + 1}`;
+                setWorkspaces(prev => [...prev, { id, name }]);
+                newSession();
+                setActiveWorkspace(id);
+              }}>+</button>
+            </div>
             {/* Status Bar */}
             <div className="status-bar">
               <span className="status-bar-item">{mode === "fast" ? "FAST" : "THINK"} mode</span>
               {lastModel && <span className="status-bar-item">Model: {lastModel.split("/").pop().replace(":free", "")}</span>}
               {responseTime && <span className="status-bar-item">{(responseTime / 1000).toFixed(1)}s</span>}
               <span className="status-bar-item" style={{ color: phase === "idle" ? "#3aff1a" : "#ffd700" }}>{phase === "idle" ? "Ready" : phase === "thinking" ? "Processing" : phase === "listening" ? "Listening" : "Speaking"}</span>
+              {automations.filter(a => a.active).length > 0 && <span className="status-bar-item" style={{ color: "#ffd700" }}>{automations.filter(a => a.active).length} automations</span>}
               <span className="status-bar-spacer" />
+              <button className="status-bar-item status-bar-shortcut" onClick={() => exportConversation("markdown")} title="Export chat" style={{ background: "none", border: "none", cursor: "pointer", color: "inherit" }}>Export</button>
               <span className="status-bar-item status-bar-shortcut">Ctrl+K</span>
             </div>
             <form className="chat-input-form" onSubmit={handleSubmit}>
