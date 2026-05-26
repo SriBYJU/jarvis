@@ -33,6 +33,35 @@ function pickVoice(voices, prefs) {
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 5) return "Burning the midnight oil";
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  if (h < 21) return "Good evening";
+  return "Good evening";
+}
+
+function formatTime(d) {
+  return new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function getSuggestions(text, toolType) {
+  if (!text && !toolType) return [];
+  const lower = (text || "").toLowerCase();
+  if (toolType === "weather") return ["Show me the forecast for tomorrow", "Compare weather in 3 cities", "What should I wear today?"];
+  if (toolType === "news") return ["Tell me more about the top story", "Search for tech news", "What's trending globally?"];
+  if (toolType === "stock") return ["Compare it with other stocks", "Show me the S&P 500", "What are the top gainers today?"];
+  if (toolType === "youtube") return ["Find me something similar", "Play some music", "Show trending videos"];
+  if (toolType === "map") return ["Get directions there", "What's nearby?", "Show me restaurants around there"];
+  if (toolType === "wikipedia") return ["Tell me more about this", "Show related topics", "Summarize in 3 sentences"];
+  if (toolType === "image") return ["Generate another variation", "Make it more detailed", "Create a gallery of 4"];
+  if (lower.includes("hello") || lower.includes("hi ") || lower.includes("hey") || lower.includes("how are")) return ["What can you do?", "Tell me a joke", "What's the weather like?", "Show me the latest news"];
+  if (lower.includes("code") || lower.includes("program") || lower.includes("function")) return ["Explain this code", "Optimize it for performance", "Write unit tests for it"];
+  if (lower.includes("thank")) return ["What else can you help with?", "Show my projects", "What's new today?"];
+  return ["Tell me more", "Search the web for this", "Remember this for later"];
+}
+
 function cleanResponse(text) {
   if (!text) return text;
   let c = text.replace(/<minimax:tool_call>[\s\S]*?<\/minimax:tool_call>/gi, "");
@@ -695,8 +724,18 @@ function Waveform({ color }) {
   return <div className="waveform">{Array.from({ length: 12 }).map((_, i) => <div key={i} className="wave-bar" style={{ animationDelay: `${i * 0.08}s`, background: color }} />)}</div>;
 }
 
-function Bubble({ role, text, streaming, model }) {
+function Bubble({ role, text, streaming, model, timestamp, onCopy, onSuggest, suggestions }) {
   const isAssistant = role === "assistant";
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+    if (onCopy) onCopy(text);
+  }
+
   return (
     <div className={`bubble ${role}`} style={{ animation: "fadeUp 0.3s ease" }}>
       {isAssistant ? (
@@ -705,7 +744,22 @@ function Bubble({ role, text, streaming, model }) {
         <div className="bubble-text">{text}{streaming && <span className="cursor-blink">|</span>}</div>
       )}
       {streaming && isAssistant && <span className="cursor-blink">|</span>}
-      {model && isAssistant && <div className="bubble-model">{model}</div>}
+      <div className="bubble-footer">
+        {timestamp && <span className="bubble-time">{formatTime(timestamp)}</span>}
+        {model && isAssistant && <span className="bubble-model">{model.split("/").pop().replace(":free", "")}</span>}
+        {!streaming && text && (
+          <button className="bubble-copy" onClick={handleCopy} title="Copy">
+            {copied ? "Copied" : "Copy"}
+          </button>
+        )}
+      </div>
+      {suggestions && suggestions.length > 0 && !streaming && isAssistant && (
+        <div className="bubble-suggestions">
+          {suggestions.map((s, i) => (
+            <button key={i} className="suggest-btn" onClick={() => onSuggest && onSuggest(s)}>{s}</button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -851,6 +905,14 @@ export default function Home() {
   const [lastModel, setLastModel] = useState("");
   const [uploadedFile, setUploadedFile] = useState(null);
   const [panelWidth, setPanelWidth] = useState(340);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [cmdSearch, setCmdSearch] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [thinkingDots, setThinkingDots] = useState("");
+  const [streamModel, setStreamModel] = useState("");
+  const [responseStartTime, setResponseStartTime] = useState(null);
+  const [responseTime, setResponseTime] = useState(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   const chatRef = useRef(null);
   const synthRef = useRef(null);
@@ -860,6 +922,7 @@ export default function Home() {
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
+  const cmdInputRef = useRef(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [agentMode, setAgentMode] = useState(false);
   const [agentRunning, setAgentRunning] = useState(false);
@@ -885,6 +948,68 @@ export default function Home() {
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages, streamText]);
+
+  // Thinking dots animation
+  useEffect(() => {
+    if (phase !== "thinking") { setThinkingDots(""); return; }
+    let i = 0;
+    const interval = setInterval(() => { i = (i + 1) % 4; setThinkingDots(".".repeat(i)); }, 400);
+    return () => clearInterval(interval);
+  }, [phase]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKey(e) {
+      if (e.key === "Escape") {
+        if (showCommandPalette) { setShowCommandPalette(false); setCmdSearch(""); return; }
+        if (showShortcuts) { setShowShortcuts(false); return; }
+        if (phase === "thinking") { stopGenerating(); return; }
+        if (isSpeaking) { stopSpeaking(); return; }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); setShowCommandPalette(p => !p); setCmdSearch(""); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key === "n") { e.preventDefault(); newSession(); return; }
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") { e.preventDefault(); inputRef.current?.focus(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key === "?") { e.preventDefault(); setShowShortcuts(p => !p); return; }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [phase, isSpeaking, showCommandPalette, showShortcuts]);
+
+  // Focus command palette input
+  useEffect(() => {
+    if (showCommandPalette && cmdInputRef.current) cmdInputRef.current.focus();
+  }, [showCommandPalette]);
+
+  // Drag & drop file upload
+  useEffect(() => {
+    function handleDragOver(e) { e.preventDefault(); setIsDragging(true); }
+    function handleDragLeave(e) { e.preventDefault(); if (e.relatedTarget === null || !e.currentTarget.contains(e.relatedTarget)) setIsDragging(false); }
+    async function handleDrop(e) {
+      e.preventDefault();
+      setIsDragging(false);
+      const file = e.dataTransfer.files?.[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const res = await fetch("/api/upload", { method: "POST", body: formData });
+        const data = await res.json();
+        if (data.data) {
+          setUploadedFile(data.data);
+          setTool(data);
+          addSystemMessage(`File uploaded: ${data.data.name} (${(data.data.size / 1024).toFixed(1)} KB)`);
+        }
+      } catch { addSystemMessage("File upload failed."); }
+    }
+    document.addEventListener("dragover", handleDragOver);
+    document.addEventListener("dragleave", handleDragLeave);
+    document.addEventListener("drop", handleDrop);
+    return () => {
+      document.removeEventListener("dragover", handleDragOver);
+      document.removeEventListener("dragleave", handleDragLeave);
+      document.removeEventListener("drop", handleDrop);
+    };
+  }, [addSystemMessage]);
 
   useEffect(() => {
     fetch("/api/sessions?userId=default").then(r => r.json()).then(d => setSessions(d.sessions || [])).catch(() => {});
@@ -940,7 +1065,7 @@ export default function Home() {
     setAgentSteps([]);
     setAgentPlan(null);
     setAgentStatus("Initializing agent...");
-    const userMsg = { role: "user", content: text };
+    const userMsg = { role: "user", content: text, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
 
@@ -989,7 +1114,7 @@ export default function Home() {
             }
             else if (event.type === "reply") {
               const cleaned = cleanResponse(event.text);
-              setMessages(prev => [...prev, { role: "assistant", content: cleaned, model: event.model }]);
+              setMessages(prev => [...prev, { role: "assistant", content: cleaned, model: event.model, timestamp: Date.now() }]);
               setLastModel(event.model || "");
               speak(cleaned);
               setAgentSteps(prev => prev.map(s => ({ ...s, status: "done" })));
@@ -1094,7 +1219,8 @@ export default function Home() {
 
   async function sendToolChat(text, fileContext) {
     setPhase("thinking");
-    const userMsg = { role: "user", content: fileContext ? `[File: ${fileContext.name}]\n${text}` : text };
+    setResponseStartTime(Date.now());
+    const userMsg = { role: "user", content: fileContext ? `[File: ${fileContext.name}]\n${text}` : text, timestamp: Date.now() };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
 
@@ -1116,7 +1242,9 @@ export default function Home() {
 
       if (data.reply) {
         const cleaned = cleanResponse(data.reply);
-        setMessages((prev) => [...prev, { role: "assistant", content: cleaned, model: data.model }]);
+        const elapsed = Date.now() - (responseStartTime || Date.now());
+        setResponseTime(elapsed);
+        setMessages((prev) => [...prev, { role: "assistant", content: cleaned, model: data.model, timestamp: Date.now() }]);
         setLastModel(data.model || "");
         speak(cleaned);
       }
@@ -1136,8 +1264,11 @@ export default function Home() {
 
   async function sendStreamChat(text, fileContext) {
     setPhase("thinking");
+    setResponseStartTime(Date.now());
+    setResponseTime(null);
+    setStreamModel("");
     const content = fileContext ? `[File: ${fileContext.name}]\n${fileContext.content ? fileContext.content.slice(0, 5000) + "\n\n" : ""}${text}` : text;
-    const userMsg = { role: "user", content };
+    const userMsg = { role: "user", content, timestamp: Date.now() };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
 
@@ -1172,6 +1303,7 @@ export default function Home() {
           if (payload === "[DONE]") break;
           try {
             const parsed = JSON.parse(payload);
+            if (parsed.meta?.model) { setStreamModel(parsed.meta.model); setLastModel(parsed.meta.model); continue; }
             const token = parsed.token || parsed.choices?.[0]?.delta?.content;
             if (token) { full += token; setStreamText(cleanResponse(full)); }
           } catch {
@@ -1182,12 +1314,13 @@ export default function Home() {
 
       if (full) {
         const cleaned = cleanResponse(full);
-        setMessages((prev) => [...prev, { role: "assistant", content: cleaned }]);
+        const elapsed = Date.now() - (responseStartTime || Date.now());
+        setResponseTime(elapsed);
+        setMessages((prev) => [...prev, { role: "assistant", content: cleaned, model: streamModel || lastModel, timestamp: Date.now() }]);
         speak(cleaned);
         setStreamText("");
         setPhase("idle");
       } else {
-        // Stream returned no tokens — fall back to chat endpoint
         setStreamText("");
         await sendToolChat(text, fileContext);
       }
@@ -1301,6 +1434,70 @@ export default function Home() {
       </Head>
 
       <div className="scanlines" />
+      {isDragging && <div className="drag-overlay"><div className="drag-overlay-inner">Drop file to upload</div></div>}
+
+      {/* Command Palette */}
+      {showCommandPalette && (
+        <div className="cmd-palette-overlay" onClick={() => { setShowCommandPalette(false); setCmdSearch(""); }}>
+          <div className="cmd-palette" onClick={e => e.stopPropagation()}>
+            <div className="cmd-palette-header">
+              <input ref={cmdInputRef} className="cmd-search" value={cmdSearch} onChange={e => setCmdSearch(e.target.value)} placeholder="Search tools & actions..." autoComplete="off"
+                onKeyDown={e => { if (e.key === "Escape") { setShowCommandPalette(false); setCmdSearch(""); } }} />
+            </div>
+            <div className="cmd-list">
+              {[
+                { label: "Weather", desc: "Check weather anywhere", action: "Weather in " },
+                { label: "News", desc: "Latest headlines", action: "Latest news" },
+                { label: "Maps", desc: "Holographic map view", action: "Show map of " },
+                { label: "YouTube", desc: "Search & play videos", action: "Play video " },
+                { label: "Stocks", desc: "Real-time stock data", action: "Stock price " },
+                { label: "Wikipedia", desc: "Instant knowledge", action: "Wiki " },
+                { label: "Web Search", desc: "Search the internet", action: "Search for " },
+                { label: "Image Gen", desc: "AI-generated images", action: "Generate image of " },
+                { label: "Calculator", desc: "Math calculations", action: "Calculate " },
+                { label: "Translate", desc: "20+ languages", action: "Translate " },
+                { label: "Timer", desc: "Set countdown timer", action: "Set timer for 5 minutes" },
+                { label: "Reminder", desc: "Set reminders", action: "Remind me to " },
+                { label: "Dictionary", desc: "Word definitions", action: "Define " },
+                { label: "Currency", desc: "Exchange rates", action: "Convert 100 USD to EUR" },
+                { label: "World Clock", desc: "Global time zones", action: "World clock" },
+                { label: "QR Code", desc: "Generate QR codes", action: "QR code for " },
+                { label: "Camera", desc: "AI vision analysis", action: "__camera__" },
+                { label: "System Info", desc: "Device diagnostics", action: "System diagnostics" },
+                { label: "Joke", desc: "Tell me a joke", action: "Tell me a joke" },
+                { label: "New Session", desc: "Start fresh", action: "__new_session__" },
+                { label: "Agent Mode", desc: "Multi-step autonomous", action: "__toggle_agent__" },
+              ].filter(c => !cmdSearch || c.label.toLowerCase().includes(cmdSearch.toLowerCase()) || c.desc.toLowerCase().includes(cmdSearch.toLowerCase())).map(c => (
+                <button key={c.label} className="cmd-item" onClick={() => {
+                  setShowCommandPalette(false); setCmdSearch("");
+                  if (c.action === "__camera__") { const t = { type: "vision_trigger", data: {} }; setTool(t); setToolHistory(prev => [t, ...prev].slice(0, 20)); }
+                  else if (c.action === "__new_session__") newSession();
+                  else if (c.action === "__toggle_agent__") setAgentMode(a => !a);
+                  else { setInput(c.action); inputRef.current?.focus(); }
+                }}>
+                  <span className="cmd-label">{c.label}</span>
+                  <span className="cmd-desc">{c.desc}</span>
+                </button>
+              ))}
+            </div>
+            <div className="cmd-footer">Esc to close &middot; Type to filter</div>
+          </div>
+        </div>
+      )}
+
+      {/* Keyboard Shortcuts Modal */}
+      {showShortcuts && (
+        <div className="cmd-palette-overlay" onClick={() => setShowShortcuts(false)}>
+          <div className="shortcuts-modal" onClick={e => e.stopPropagation()}>
+            <div className="shortcuts-title">Keyboard Shortcuts</div>
+            <div className="shortcut-row"><span className="shortcut-keys">Ctrl + K</span><span>Command palette</span></div>
+            <div className="shortcut-row"><span className="shortcut-keys">Ctrl + N</span><span>New session</span></div>
+            <div className="shortcut-row"><span className="shortcut-keys">/</span><span>Focus chat input</span></div>
+            <div className="shortcut-row"><span className="shortcut-keys">Escape</span><span>Stop / close</span></div>
+            <div className="shortcut-row"><span className="shortcut-keys">Ctrl + ?</span><span>Show shortcuts</span></div>
+          </div>
+        </div>
+      )}
 
       <div className="jarvis-root">
         {/* Header */}
@@ -1315,6 +1512,7 @@ export default function Home() {
             ))}
           </div>
           <div className="header-right">
+            <button className="cmd-trigger" onClick={() => setShowCommandPalette(true)} title="Command palette (Ctrl+K)">Ctrl+K</button>
             <div className="mode-toggle">
               <button className={`mode-btn${mode === "fast" ? " active" : ""}`} onClick={() => setMode("fast")} title="Fast mode">FAST</button>
               <button className={`mode-btn${mode === "thinking" ? " active" : ""}`} onClick={() => setMode("thinking")} title="Thinking mode">THINK</button>
@@ -1347,6 +1545,7 @@ export default function Home() {
             <button className={`wake-btn${wakeWordOn ? " active" : ""}`} onClick={() => setWakeWordOn(!wakeWordOn)}>
               {wakeWordOn ? "WAKE ON" : "WAKE"}
             </button>
+            <button className="shortcut-btn" onClick={() => setShowShortcuts(true)} title="Keyboard shortcuts (Ctrl+?)">?</button>
             <div className="status-dot" style={{ background: phase === "idle" ? "#3aff1a" : "#ffd700" }} />
           </div>
         </header>
@@ -1408,19 +1607,36 @@ export default function Home() {
               </div>
             )}
             <div className="chat-messages" ref={chatRef}>
-              {messages.map((m, i) => (
-                <Bubble key={i} role={m.role} text={m.content} model={m.model} />
-              ))}
-              {streamText && <Bubble role="assistant" text={streamText} streaming />}
-              {messages.length === 0 && !streamText && (
+              {messages.map((m, i) => {
+                const isLast = i === messages.length - 1 && m.role === "assistant";
+                const lastToolType = tool?.type;
+                return (
+                  <Bubble key={i} role={m.role} text={m.content} model={m.model} timestamp={m.timestamp}
+                    suggestions={isLast ? getSuggestions(m.content, lastToolType) : undefined}
+                    onSuggest={(s) => smartSend(s)}
+                  />
+                );
+              })}
+              {streamText && <Bubble role="assistant" text={streamText} streaming model={streamModel} />}
+              {phase === "thinking" && !streamText && (
+                <div className="thinking-indicator">
+                  <div className="thinking-dots-wrapper">
+                    <span className="thinking-dot" /><span className="thinking-dot" /><span className="thinking-dot" />
+                  </div>
+                  <span className="thinking-label">{agentRunning ? "Agent working" : "Thinking"}{thinkingDots}</span>
+                  {streamModel && <span className="thinking-model">{streamModel.split("/").pop().replace(":free", "")}</span>}
+                </div>
+              )}
+              {messages.length === 0 && !streamText && phase !== "thinking" && (
                 <div className="empty-chat">
                   <div className="empty-title">{p.name}</div>
-                  <div className="empty-sub">How can I assist you today, sir?</div>
+                  <div className="empty-sub">{getGreeting()}, sir. How can I assist you?</div>
                   <div className="quick-actions">
                     {["What can you do?", "Weather in Tokyo", "Latest news", "Create an Excel report on S&P 500 stocks", "Generate a PowerPoint on AI trends", "Open camera", "Create a Python web scraper script", "Define serendipity"].map(q => (
                       <button key={q} className="quick-btn" onClick={() => smartSend(q)}>{q}</button>
                     ))}
                   </div>
+                  <div className="shortcut-hint">Press Ctrl+K for command palette</div>
                 </div>
               )}
             </div>
@@ -1430,19 +1646,28 @@ export default function Home() {
                 <button onClick={() => setUploadedFile(null)} style={{ marginLeft: 8, background: "none", border: "none", color: "#ff4a4a", cursor: "pointer" }}>x</button>
               </div>
             )}
+            {/* Status Bar */}
+            <div className="status-bar">
+              <span className="status-bar-item">{mode === "fast" ? "FAST" : "THINK"} mode</span>
+              {lastModel && <span className="status-bar-item">Model: {lastModel.split("/").pop().replace(":free", "")}</span>}
+              {responseTime && <span className="status-bar-item">{(responseTime / 1000).toFixed(1)}s</span>}
+              <span className="status-bar-item" style={{ color: phase === "idle" ? "#3aff1a" : "#ffd700" }}>{phase === "idle" ? "Ready" : phase === "thinking" ? "Processing" : phase === "listening" ? "Listening" : "Speaking"}</span>
+              <span className="status-bar-spacer" />
+              <span className="status-bar-item status-bar-shortcut">Ctrl+K</span>
+            </div>
             <form className="chat-input-form" onSubmit={handleSubmit}>
               <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display: "none" }} />
-              <button type="button" className="upload-btn" onClick={() => fileInputRef.current?.click()} title="Upload file">+</button>
+              <button type="button" className="upload-btn" onClick={() => fileInputRef.current?.click()} title="Upload file (or drag & drop)">+</button>
               <input ref={inputRef} className={`chat-input${agentMode ? " agent-input" : ""}`} value={input} onChange={(e) => setInput(e.target.value)} placeholder={agentMode ? `Ask JARVIS to do anything autonomously...` : `Talk to ${p.name}...`} autoComplete="off" />
               <button type="submit" className="send-btn" disabled={!input.trim() || phase === "thinking"}>&#8594;</button>
               <button type="button" className="mic-btn" onClick={() => phase === "listening" ? stopListening() : startListening()} style={{ color: phase === "listening" ? "#ff4a4a" : p.color }}>
                 {phase === "listening" ? "||" : "MIC"}
               </button>
               {phase === "thinking" && (
-                <button type="button" className="stop-btn" onClick={stopGenerating} title="Stop generating">&#9632; STOP</button>
+                <button type="button" className="stop-btn" onClick={stopGenerating} title="Stop generating (Esc)">&#9632; STOP</button>
               )}
               {isSpeaking && (
-                <button type="button" className="stop-btn" onClick={stopSpeaking} title="Stop speaking" style={{ background: "rgba(58,255,26,0.1)", borderColor: "rgba(58,255,26,0.3)", color: "#3aff1a" }}>&#9632; MUTE</button>
+                <button type="button" className="stop-btn" onClick={stopSpeaking} title="Stop speaking (Esc)" style={{ background: "rgba(58,255,26,0.1)", borderColor: "rgba(58,255,26,0.3)", color: "#3aff1a" }}>&#9632; MUTE</button>
               )}
             </form>
           </div>

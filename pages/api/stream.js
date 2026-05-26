@@ -19,6 +19,9 @@ export default async function handler(req, res) {
     Connection: "keep-alive",
   });
 
+  // Send model info as first event
+  res.write(`data: ${JSON.stringify({ meta: { model: result.model } })}\n\n`);
+
   const reader = result.stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
