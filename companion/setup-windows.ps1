@@ -36,19 +36,17 @@ if ($chrome) {
 
 if (Get-Command ollama -ErrorAction SilentlyContinue) {
   Write-Host "OK: Ollama detected" -ForegroundColor Green
-  try {
-    $models = ollama list 2>$null
-    Write-Host $models
-  } catch {}
+  try { $models = ollama list 2>$null; Write-Host $models } catch {}
 } else {
-  Write-Host "Ollama is not installed yet. The web app will keep cloud fallback until you install/start Ollama." -ForegroundColor Yellow
+  Write-Host "Ollama is not installed yet. JARVIS Realtime requires Ollama for local conversation." -ForegroundColor Yellow
 }
 
 Write-Host "`nLocal services that will start:" -ForegroundColor Cyan
-Write-Host "- 3003 JARVIS Core" -ForegroundColor Gray
+Write-Host "- 3003 JARVIS Core (tools / agents / missions)" -ForegroundColor Gray
 Write-Host "- 3004 MCP Bridge" -ForegroundColor Gray
 Write-Host "- 3005 Spotify Adapter" -ForegroundColor Gray
 Write-Host "- 3006 Browser Service" -ForegroundColor Gray
+Write-Host "- 3007 JARVIS Realtime (conversation / wake voice / instant HUD routing)" -ForegroundColor Green
 
 Write-Host "`nSecurity reminder:" -ForegroundColor Cyan
 Write-Host "- Keep real credentials only in companion/.env" -ForegroundColor Gray
@@ -56,5 +54,5 @@ Write-Host "- Do not commit .env" -ForegroundColor Gray
 Write-Host "- Add extra folders only through JARVIS_WORKSPACES" -ForegroundColor Gray
 Write-Host "- Log into sites only in the dedicated JARVIS Chrome profile when you want the agent to use those sessions" -ForegroundColor Gray
 
-Write-Host "`nStarting J.A.R.V.I.S. Local Core..." -ForegroundColor Cyan
+Write-Host "`nStarting J.A.R.V.I.S. v4 services..." -ForegroundColor Cyan
 npm start
