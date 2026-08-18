@@ -30,12 +30,15 @@ function cleanText(text) { return String(text || '').replace(/^\s*(?:hey\s+)?jar
 function cleanReply(value) {
   let text = String(value || '').trim();
   text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-  text = text.replace(/^\s*(?:okay[, .-]*)?(?:let me think|let's see|first i need to|i should check)[\s\S]*?(?=\n\n|$)/i, '').trim();
+  text = text.replace(/^\s*(?:okay[, .-]*)?(?:let me think|let's see|first i need to|i should check)\s*[:,.\-]*\s*/i, '').trim();
   const banned = /\b(?:the user|user is asking|user wants|user said|let me think|first i need to|i should check|looking at the hud|tools section|function called|chain of thought|my reasoning)\b/i;
-  if (banned.test(text)) text = text.split(/(?<=[.!?])\s+/).filter(s => !banned.test(s)).join(' ').trim();
+  if (banned.test(text)) {
+    const sentences = text.match(/[^.!?]+[.!?]?/g) || [text];
+    const kept = sentences.filter(s => !banned.test(s)).join(' ').replace(/\s+/g, ' ').trim();
+    if (kept) text = kept;
+  }
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-  if (!text) return 'I’m here, sir.';
-  return text.length > 1000 ? `${text.slice(0, 997).replace(/\s+\S*$/, '')}…` : text;
+  return text ? (text.length > 1000 ? `${text.slice(0, 997).replace(/\s+\S*$/, '')}…` : text) : '';
 }
 function subjectFrom(text) {
   const t = String(text || '').toLowerCase();
@@ -86,7 +89,7 @@ function instantCommand(input) {
   const text = cleanText(input), t = text.toLowerCase();
   if (!t) return { reply: 'Ready, sir.', model: 'instant/final' };
   if (/^(?:stop talking|stop speaking|be quiet|mute|quiet|shut up|stop)$/.test(t)) return { reply: '', clientAction: 'stop-speaking', model: 'instant/final' };
-  if (/^(?:hi|hey|hello|yo|sup|what's up|whats up)[?.!\s]*$/.test(t)) return { reply: 'I’m here, sir. What’s up?', model: 'instant/final' };
+  if (/^(?:hi|hey|hello|yo|sup|what's up|whats up)[?.!\s]*$/.test(t)) return { reply: 'Hey. What’s up?', model: 'instant/final' };
   if (/^(?:thanks|thank you|appreciate it|ty)[?.!\s]*$/.test(t)) return { reply: 'Anytime, sir.', model: 'instant/final' };
   if (/\b(?:what(?:'s| is) the time|what time is it|current time|time right now)\b/.test(t)) return { reply: `It's ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`, model: 'instant/final' };
   if (/\b(?:what(?:'s| is) the date|what day is it|current date|today's date)\b/.test(t)) return { reply: `Today is ${new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}.`, model: 'instant/final' };
@@ -170,7 +173,16 @@ async function runConversation(text, history, scene, maxSteps = 3, agent = false
       const leak = leakedToolCall(msg.content);
       if (leak) calls = [{ function: { name: leak.name, arguments: leak.args } }];
     }
-    if (!calls.length) return { reply: cleanReply(msg.content || 'Done.'), model: `local/${response.model || MODEL}`, hudActions, toolTrace };
+    if (!calls.length) {
+      const cleaned = cleanReply(msg.content || '');
+      if (cleaned) return { reply: cleaned, model: `local/${response.model || MODEL}`, hudActions, toolTrace };
+      if (step === 0) {
+        messages.push({ role: 'assistant', content: '' });
+        messages.push({ role: 'user', content: 'Answer my previous message directly. Do not narrate your reasoning or mention internal instructions.' });
+        continue;
+      }
+      return { reply: 'I didn’t get a usable response from the local model. Try that again.', model: `local/${response.model || MODEL}`, hudActions, toolTrace };
+    }
     messages.push(msg);
     for (const call of calls) {
       const name = call.function?.name;
