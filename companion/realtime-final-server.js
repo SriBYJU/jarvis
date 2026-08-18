@@ -137,12 +137,15 @@ function sceneText(scene) {
   return `Visible HUD: ${items.map(p => `${p.id}:${p.panelType}${p.query ? `(${p.query})` : ''}`).join(', ')}. Selected: ${scene?.selectedId || 'none'}.`;
 }
 
-async function callOllama(messages, scene, agent = false) {
+async function callOllama(messages, scene, agent = false, requestedModel = null, mode = 'fast') {
+  const requested = String(requestedModel || '').trim();
+  const model = /^[a-z0-9._:/-]{1,120}$/i.test(requested) ? requested : MODEL;
+  const deep = mode === 'thinking';
   const system = `You are J.A.R.V.I.S., a fast, highly capable local personal AI. Speak directly and naturally to the person in front of you. You understand fragments, corrections, pronouns, and conversational follow-ups.\n\n${sceneText(scene)}\n\nNON-NEGOTIABLE RULES:\n- Never call the person "the user".\n- Never expose or narrate reasoning, hidden analysis, planning, chain-of-thought, tool selection, or internal state.\n- Never say "let me think", "first I need to", "I should check", or similar internal narration.\n- Never print tool JSON. Use tools silently.\n- For live facts or actions, use core_tool rather than guessing.\n- For visible UI changes, use hud.\n- Resolve "that", "it", and "this" from the visible selected/recent panel.\n- Do not create duplicate panels when modifying an existing one.\n- Never claim an action succeeded when a tool failed.\n- Default to one or two concise spoken sentences unless more detail was explicitly requested.\n- You may say "sir" naturally, but not in every sentence.\n- Sound competent and human, not robotic or verbose.${agent ? '\n- For a multi-step mission, use tools in sequence, verify results, and stop if a required tool reports failure or approval is needed.' : ''}`;
   const response = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: MODEL, messages: [{ role: 'system', content: system }, ...messages.slice(-10)], tools: [HUD_TOOL, CORE_TOOL], think: false, stream: false, keep_alive: KEEP_ALIVE, options: { temperature: agent ? .1 : .16, num_ctx: 4096, num_predict: agent ? 260 : 180, repeat_penalty: 1.08 } }),
-    signal: AbortSignal.timeout(agent ? 22000 : 14000),
+    body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, ...messages.slice(-10)], tools: [HUD_TOOL, CORE_TOOL], think: false, stream: false, keep_alive: KEEP_ALIVE, options: { temperature: agent ? .1 : deep ? .12 : .16, num_ctx: 4096, num_predict: agent ? 300 : deep ? 420 : 180, repeat_penalty: 1.08 } }),
+    signal: AbortSignal.timeout(agent ? 24000 : deep ? 22000 : 14000),
   });
   if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`);
   return response.json();
@@ -155,12 +158,12 @@ function leakedToolCall(content) {
   return null;
 }
 
-async function runConversation(text, history, scene, maxSteps = 3, agent = false) {
+async function runConversation(text, history, scene, maxSteps = 3, agent = false, requestedModel = null, mode = 'fast') {
   const messages = (history || []).slice(-8).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '') }));
   if (!messages.length || messages[messages.length - 1].content !== text) messages.push({ role: 'user', content: text });
   const hudActions = [], toolTrace = [];
   for (let step = 0; step < maxSteps; step++) {
-    const response = await callOllama(messages, scene, agent);
+    const response = await callOllama(messages, scene, agent, requestedModel, mode);
     const msg = response.message || {};
     let calls = msg.tool_calls || [];
     if (!calls.length) {
@@ -267,7 +270,7 @@ app.post('/v1/command', async (req, res) => {
       return res.json({ reply: summarizeCoreResult(instant.coreTool.name, result), model: instant.model, hudActions: result.hudActions || [], clientAction: instant.clientAction, latencyMs: Date.now() - started });
     }
     if (instant) return res.json({ ...instant, latencyMs: Date.now() - started });
-    const result = await runConversation(text, req.body?.messages || [], req.body?.scene || {}, 3, false);
+    const result = await runConversation(text, req.body?.messages || [], req.body?.scene || {}, 3, false, req.body?.model || null, req.body?.mode || 'fast');
     res.json({ ...result, reply: cleanReply(result.reply), latencyMs: Date.now() - started });
   } catch (e) {
     res.status(503).json({ error: e.message, reply: 'I hit a local error instead of making you wait, sir.', model: 'local/error', latencyMs: Date.now() - started });
@@ -281,7 +284,7 @@ app.post('/v1/agent', async (req, res) => {
   send({ type: 'plan', taskName: message.slice(0, 72) || 'Mission', steps: ['Understand objective', 'Use the right local tools', 'Verify the result', 'Report back'] });
   try {
     send({ type: 'step', index: 0 });
-    const result = await runConversation(message, req.body?.messages || [], req.body?.scene || {}, 5, true);
+    const result = await runConversation(message, req.body?.messages || [], req.body?.scene || {}, 5, true, req.body?.model || null, req.body?.mode || 'thinking');
     send({ type: 'step', index: 1 });
     for (const trace of result.toolTrace || []) send({ type: 'status', text: `${trace.name}: ${trace.ok ? 'complete' : 'blocked'}` });
     for (const action of result.hudActions || []) {

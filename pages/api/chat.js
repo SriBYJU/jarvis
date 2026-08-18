@@ -587,6 +587,13 @@ export default async function handler(req, res) {
     console.error("Tool error:", e.message);
   }
 
+  // Do not hallucinate current/live tool results when an optional external data source is not configured.
+  if (!toolResult && ["youtube", "stock", "news", "websearch"].includes(intent)) {
+    const labels = { youtube: "YouTube search", stock: "Live stock data", news: "Live news", websearch: "Web search" };
+    const reply = `${labels[intent]} is not configured on this route yet. I won't guess or invent live results.`;
+    return res.status(200).json({ reply, tool: null, model: "tool/unavailable" });
+  }
+
   // Learn from message
   try {
     for (const fact of extractLearningFacts(lastMsg)) addLearningFact(uid, fact);

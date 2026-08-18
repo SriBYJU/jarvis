@@ -325,7 +325,7 @@ export default function JarvisRuntimeFinal() {
     const original = window.fetch.bind(window); originalFetchRef.current = original; let mounted = true;
     const callRealtime = async (body, text, signal) => {
       const started = performance.now();
-      const r = await original(`${REALTIME}/v1/command`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, messages: body.messages || [], mode: body.mode, scene: currentScene() }), signal: signal || AbortSignal.timeout(15000) });
+      const r = await original(`${REALTIME}/v1/command`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, messages: body.messages || [], mode: body.mode || 'fast', model: body.model || null, scene: currentScene() }), signal: signal || AbortSignal.timeout(15000) });
       const data = await r.json().catch(() => ({}));
       if (mounted) setHealth(h => ({ ...h, online: r.ok, model: data.model?.split('/').pop() || h.model, latency: Math.round(performance.now() - started) }));
       if (data.clientAction === 'stop-speaking') window.speechSynthesis?.cancel();
