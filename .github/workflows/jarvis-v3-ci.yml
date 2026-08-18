@@ -39,6 +39,7 @@ jobs:
           ! grep -q "realtime-v5-server" companion/launcher.js
           ! grep -A12 'app.get("/health"' companion/browser-server.js | grep -q 'ensureContext'
           grep -q "think: false" companion/realtime-v6-server.js
+          grep -q "Keep the full original" README.md || true
 
       - name: Install web dependencies
         run: npm ci
@@ -53,3 +54,68 @@ jobs:
       - name: Verify local modules can load
         working-directory: companion
         run: node -e "require('./agents'); require('./policy'); require('playwright-core'); console.log('local modules ok')"
+
+      - name: Boot local stack and smoke-test realtime paths
+        working-directory: companion
+        shell: bash
+        run: |
+          node launcher.js >/tmp/jarvis-v6.log 2>&1 &
+          JARVIS_PID=$!
+          cleanup() { kill "$JARVIS_PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+          sleep 3
+          node - <<'NODE'
+          const assert = require('assert');
+          const base = 'http://127.0.0.1';
+          async function json(url, options) {
+            const r = await fetch(url, options);
+            const d = await r.json();
+            assert.ok(r.ok, `${url} HTTP ${r.status}: ${JSON.stringify(d)}`);
+            return d;
+          }
+          async function command(message) {
+            const started = Date.now();
+            const data = await json(`${base}:3007/v1/command`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ message, messages: [], scene: { panels: [], selectedId: null } }),
+            });
+            return { data, elapsed: Date.now() - started };
+          }
+          (async () => {
+            const realtime = await json(`${base}:3007/health`);
+            assert.equal(realtime.version, '6.0.0');
+
+            const browser1 = await json(`${base}:3006/health`);
+            const browser2 = await json(`${base}:3006/health`);
+            assert.equal(browser1.state, 'idle');
+            assert.equal(browser2.state, 'idle');
+            assert.equal(browser1.pages, 0);
+            assert.equal(browser2.pages, 0);
+
+            const time = await command('what time is it');
+            assert.match(time.data.reply, /It's /);
+            assert.ok(time.elapsed < 1200, `instant time command took ${time.elapsed}ms`);
+
+            const map = await command('pull up a map of Richmond Virginia');
+            assert.equal(map.data.hudActions?.[0]?.action, 'show');
+            assert.equal(map.data.hudActions?.[0]?.panelType, 'map');
+            assert.equal(map.data.hudActions?.[0]?.query, 'Richmond Virginia');
+
+            const full = await command('make the map take the whole screen');
+            assert.equal(full.data.hudActions?.[0]?.action, 'resize');
+            assert.equal(full.data.hudActions?.[0]?.position, 'full');
+
+            const stop = await command('stop talking');
+            assert.equal(stop.data.clientAction, 'stop-speaking');
+
+            const hello = await command('hey Jarvis');
+            assert.ok(!/the user|let me think|first i need to/i.test(hello.data.reply || ''));
+
+            const core = await json(`${base}:3003/health`);
+            assert.equal(core.status, 'online');
+
+            console.log('JARVIS v6 runtime smoke tests passed');
+          })().catch(err => { console.error(err); process.exit(1); });
+          NODE
+          cat /tmp/jarvis-v6.log
