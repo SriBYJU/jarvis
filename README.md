@@ -1,127 +1,220 @@
-# J.A.R.V.I.S. v2.0
-**Just A Rather Very Intelligent System** — The ultimate free AI assistant with Iron Man HUD aesthetics.
+# J.A.R.V.I.S. v3
+**Just A Rather Very Intelligent System** — a local-first personal AI operating system with the original Iron-Man-style HUD preserved and a new agent runtime underneath it.
 
-## Features
+## What changed in v3
 
-### Core AI
-- 8 free OpenRouter LLM models with automatic fallback chain (never hits rate limits)
-- Gemini API fallback
-- Streaming token responses (real-time text like ChatGPT)
-- 3 AI personas: **JARVIS**, **FRIDAY**, **EDITH** — each with unique voice
+The visual identity stays JARVIS. The intelligence layer is rebuilt around a local companion service so the assistant no longer depends on free cloud-model quotas for normal use.
 
-### Voice
-- Voice input via Web Speech API
-- Voice output via Speech Synthesis with **persona-tuned voices** (different voice, pitch, rate per persona)
-- Wake-word detection: say **"Hey JARVIS"**, **"Hey FRIDAY"**, or **"Hey EDITH"**
+### Local-first intelligence
+- **Ollama as the primary AI runtime** — local, offline-capable, no per-message API quota
+- Existing OpenRouter/Gemini/cloud paths remain available as fallback when the local core is unavailable
+- Conversational tool calling replaces regex-only command handling as the primary intelligence layer
+- Simple commands still use instant routing for speed
+- Local long-term memory persists outside the browser
 
-### Tools & Capabilities
-- **Holographic Maps** — Google Maps with sci-fi HUD filter
-- **Weather** — real-time weather data (OpenWeatherMap)
-- **YouTube** — search and embed videos
-- **Web Search** — Google Custom Search with results panel
-- **Web Browse** — fetch and summarize any webpage
-- **News** — live headlines (NewsAPI)
-- **Stocks** — real-time market data (Finnhub)
-- **Translation** — 20+ languages via MyMemory + LibreTranslate
-- **Currency Converter** — live exchange rates (Frankfurter)
-- **Unit Converter** — 14+ unit conversions (km/h, mph, celsius, etc.)
-- **World Clocks** — 6 timezone grid
-- **Countdown Timer** — with audible expiry alert
-- **Absolute-Time Reminders** — "remind me at 5pm to call mom"
-- **Jokes** — fetched live from official joke API
-- **Code Generation** — with syntax highlighting and copy button
-- **Persistent Memory** — "remember X" / "what did I say about Y" / "forget everything"
+### Main agent + specialist agents
+JARVIS acts as the orchestrator and can delegate bounded work to:
 
-### Conversation History
-- Auto-saves conversations to localStorage + server
-- Browse and restore past sessions
-- Persists across browser refreshes
+- **TOM** — developer / coding agent
+- **SCOUT** — research agent
+- **F.R.I.D.A.Y.** — operations agent
+- **ATLAS** — analytics agent
+- **ECHO** — communications agent
+- **ARGUS** — monitoring agent
 
-### UI
-- Iron Man HUD aesthetic with animated orb, spinning rings, scanlines
-- Animated tool panels with sci-fi transitions
-- Dark theme optimized for focus
+Background missions are persisted locally and continue processing while the companion service is running.
 
----
+### Dynamic HUD workspace
+The existing HUD stays in place, and v3 adds an independent floating workspace layer that can be controlled conversationally.
 
-## Quick Start
+Supported actions include:
+- show panels
+- move panels
+- resize panels
+- clear the workspace
+- save the current layout
+- restore the saved layout
+- remove individual panels
 
-### 1. Get API keys (all free)
-| Service | URL | Required? |
-|---------|-----|-----------|
-| OpenRouter | [openrouter.ai/keys](https://openrouter.ai/keys) | Yes (or Gemini) |
-| Gemini | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Fallback |
-| YouTube | [console.cloud.google.com](https://console.cloud.google.com/apis/library/youtube.googleapis.com) | Optional |
-| OpenWeatherMap | [openweathermap.org](https://home.openweathermap.org/api_keys) | Optional |
-| Finnhub | [finnhub.io](https://finnhub.io/) | Optional |
-| NewsAPI | [newsapi.org](https://newsapi.org/) | Optional |
-| Google CSE | [programmablesearchengine.google.com](https://programmablesearchengine.google.com/) | Optional |
+Map, weather, system, mission and media panels are already supported. The design intentionally keeps the futuristic blue HUD feel instead of replacing it with a generic AI dashboard.
 
-### 2. Run locally
-```bash
-cp .env.local.example .env.local
-# Fill in your API keys in .env.local
+### Local computer capabilities
+The companion can currently:
+- read approved local files
+- write approved local files
+- list approved folders
+- launch applications
+- open URLs
+- inspect CPU / memory / OS information
+- store and recall memory
+- run persistent missions
+- call free weather/geocoding services
 
-npm install
-npm run dev
-# Open http://localhost:3000
-```
+Desktop, Documents and Downloads are allowed by default. Extra folders must be explicitly added with `JARVIS_WORKSPACES`.
 
-### 3. Deploy on Vercel (free)
-- Go to [vercel.com](https://vercel.com) and import this repo
-- Add your API keys as Environment Variables
-- Deploy — live in ~2 minutes
+### Spotify
+A local Spotify PKCE adapter is included. After adding a Spotify Client ID and authorizing once, JARVIS can handle natural commands such as:
+- `play [song or artist]`
+- `pause the music`
+- `skip this song`
+- `go back one track`
+- `volume 40`
+
+Spotify control is kept separate from the AI model so playback commands do not consume model quota.
+
+### MCP / integrations
+A generic local MCP bridge is included for integrations such as:
+- Gmail
+- Google Calendar
+- Buffer
+
+The build can run before those integrations are configured. MCP commands and OAuth/API credentials are added locally later and are not committed to GitHub.
+
+### Existing v2 features preserved
+The original app still contains its existing tools and UI, including:
+- voice input and browser speech output
+- wake-word mode
+- JARVIS / FRIDAY / EDITH personas
+- weather
+- maps
+- YouTube
+- web search and browsing
+- news
+- stocks
+- translation
+- currency and unit conversion
+- world clocks
+- timers and reminders
+- code generation
+- persistent conversation history
+- project tools
+- file generation
+- system / screen panels
+- the animated orb, rings, scanlines and dark HUD aesthetic
+
+The v3 bridge sits above the existing app instead of deleting it, which means old tools remain available as fallbacks while the local runtime takes over normal AI traffic when it is online.
 
 ---
 
 ## Architecture
 
-```
-pages/
-  index.js          — Full React UI with all tool panels
-  api/
-    chat.js         — Main chat endpoint with intent detection + LLM
-    stream.js       — SSE streaming endpoint
-    history.js      — Conversation history persistence
-    tools/
-      weather.js    — OpenWeatherMap
-      youtube.js    — YouTube Data API
-      translate.js  — MyMemory + LibreTranslate
-      currency.js   — Frankfurter API
-      convert.js    — Unit conversion
-      worldclock.js — Timezone display
-      joke.js       — Official Joke API
-      stock.js      — Finnhub
-      news.js       — NewsAPI
-      memory.js     — Persistent memory CRUD
-      reminder.js   — Absolute-time reminders
-      websearch.js  — Google Custom Search
-      browse.js     — Web page fetcher/summarizer
-lib/
-  intent.js         — Regex-based intent detection
-  llm.js            — OpenRouter + Gemini with fallback chain
-  store.js          — File-based JSON storage
+```text
+                         YOU
+                  voice / text / HUD
+                         │
+                         ▼
+              ORIGINAL JARVIS WEB HUD
+                         │
+                 JarvisCoreOverlay
+                         │
+            ┌────────────┴────────────┐
+            │                         │
+      LOCAL CORE ONLINE          LOCAL CORE OFFLINE
+            │                         │
+            ▼                         ▼
+      OLLAMA + AGENTS          EXISTING CLOUD FALLBACK
+            │
+      tool calling / memory
+            │
+   ┌────────┼─────────┬──────────┐
+   ▼        ▼         ▼          ▼
+  HUD     FILES     APPS       SYSTEM
+   │
+   ├──────── WEATHER / GEO
+   ├──────── BACKGROUND MISSIONS
+   ├──────── SPOTIFY ADAPTER
+   └──────── MCP BRIDGE
+                │
+          Gmail / Calendar / Buffer
 ```
 
-## Commands
+---
 
-| Say / Type | What happens |
-|---|---|
-| "Weather in Tokyo" | Shows weather panel |
-| "Map of Paris" | Shows holographic map |
-| "Play video cats" | Searches YouTube |
-| "Search for SpaceX" | Web search results |
-| "News about AI" | Headlines panel |
-| "Stock AAPL" | Stock price + chart |
-| "Translate hello to Spanish" | Translation panel |
-| "Convert 100 km to miles" | Unit conversion |
-| "Convert 50 USD to EUR" | Currency exchange |
-| "World clocks" | 6-timezone grid |
-| "Set a timer for 5 minutes" | Countdown timer |
-| "Remind me at 5pm to call mom" | Absolute-time reminder |
-| "Remember my password is 1234" | Saves to memory |
-| "What did I say about passwords" | Recalls memory |
-| "Forget everything" | Clears memory |
-| "Tell me a joke" | Random joke |
-| "Write a Python sort function" | Code generation |
-| Anything else | AI chat response |
+## Quick start
+
+### Web HUD
+
+```bash
+npm install
+npm run dev
+```
+
+Open the normal app as before.
+
+### Local JARVIS Core
+
+On Windows, open PowerShell inside `companion/` and run:
+
+```powershell
+./setup-windows.ps1
+```
+
+Or manually:
+
+```powershell
+npm install
+Copy-Item .env.example .env
+npm start
+```
+
+The local services run on:
+- `127.0.0.1:3003` — JARVIS Core
+- `127.0.0.1:3004` — MCP Bridge
+- `127.0.0.1:3005` — Spotify Adapter
+
+When the local core is detected, the top-right badge in the HUD changes to **LOCAL CORE**.
+
+### Ollama
+
+Install and start Ollama, then pull at least one model. The default model name is configurable in `companion/.env`:
+
+```env
+JARVIS_MODEL=qwen3:4b
+```
+
+The best model depends on the machine's RAM, GPU and VRAM. JARVIS automatically falls back to the first installed model if the configured model is unavailable.
+
+---
+
+## Integration setup
+
+Do **not** commit secrets.
+
+Use `companion/.env` for local credentials and connector commands. The safe template is `companion/.env.example`.
+
+Later configuration can include:
+- `SPOTIFY_CLIENT_ID`
+- `GMAIL_MCP_COMMAND`
+- `GOOGLE_CALENDAR_MCP_COMMAND`
+- `BUFFER_MCP_COMMAND`
+- optional OAuth/API credentials where needed
+- optional `GITHUB_TOKEN`
+
+The application is intentionally usable before those values are supplied.
+
+---
+
+## Security model
+
+The local runtime is intentionally not unrestricted.
+
+- localhost-only services
+- explicit allowed web origins
+- approved filesystem roots
+- no default delete-file tool
+- local writes governed by policy
+- external/destructive actions designed to require approval
+- real secrets stay in ignored local environment files
+- background missions have execution checkpoints instead of infinite loops
+
+---
+
+## Validation
+
+The repository includes a JARVIS v3 CI workflow that checks:
+- local-core JavaScript syntax
+- the Next.js production build
+- companion dependency installation
+- core module loading
+
+The goal is not to count a feature because a button exists. A v3 feature should be wired end-to-end, fail clearly, preserve fallbacks, and integrate naturally with the HUD.
