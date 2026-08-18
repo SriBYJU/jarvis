@@ -9,12 +9,12 @@ async function json(url, options) {
   return d;
 }
 
-async function command(message, scene = { panels: [], selectedId: null }) {
+async function command(message, scene = { panels: [], selectedId: null }, extra = {}) {
   const started = Date.now();
   const data = await json(`${base}:3007/v1/command`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ message, messages: [], scene }),
+    body: JSON.stringify({ message, messages: [], scene, ...extra }),
   });
   return { data, elapsed: Date.now() - started };
 }
@@ -59,6 +59,10 @@ async function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms))
   assert.ok(natural.elapsed < 4000, `mocked natural conversation took ${natural.elapsed}ms`);
   assert.ok(!/the user|let me think|first i need to|tool_call/i.test(natural.data.reply));
 
+  const localModel = await command('Verify selected local model forwarding.', { panels: [], selectedId: null }, { model: 'llama3:latest', mode: 'thinking' });
+  assert.equal(localModel.data.model, 'local/llama3:latest');
+  assert.match(localModel.data.reply, /local conversation path is working/i);
+
   const leakedTool = await command('tool leak test', {
     selectedId: 'map_1',
     panels: [{ id: 'map_1', panelType: 'map', query: 'London', title: 'Map' }],
@@ -73,7 +77,7 @@ async function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms))
   const agentResponse = await fetch(`${base}:3007/v1/agent`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ message: 'Verify local agent mode', messages: [], scene: { panels: [], selectedId: null } }),
+    body: JSON.stringify({ message: 'Verify local agent mode', messages: [], mode: 'thinking', model: 'qwen3:4b', scene: { panels: [], selectedId: null } }),
   });
   assert.ok(agentResponse.ok);
   const agentText = await agentResponse.text();
@@ -111,7 +115,7 @@ async function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms))
   assert.equal(core.status, 'online');
   assert.equal(core.services.browser, true, 'idle browser service should still report available');
 
-  console.log('JARVIS final realtime, agent, delegation, and background smoke tests passed');
+  console.log('JARVIS final realtime, local-model, agent, delegation, and background smoke tests passed');
 })().catch(err => {
   console.error(err);
   process.exit(1);
