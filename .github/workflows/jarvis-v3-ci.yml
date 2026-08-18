@@ -5,11 +5,7 @@ on:
     branches:
       - main
       - 'agent/**'
-      - 'hotfix/**'
   pull_request:
-
-permissions:
-  contents: write
 
 jobs:
   verify:
@@ -21,21 +17,6 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-
-      - name: Apply one-time empty-reply hotfix
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/hotfix/')
-        shell: bash
-        run: |
-          node scripts/patch-empty-reply-fallback.js
-          if ! git diff --quiet -- companion/realtime-final-server.js components/JarvisRuntimeFinal.js scripts/runtime-smoke.js; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add companion/realtime-final-server.js components/JarvisRuntimeFinal.js scripts/runtime-smoke.js
-            git commit -m "Fix repeated empty-response fallback"
-            git push origin HEAD:${GITHUB_REF_NAME}
-          else
-            echo "empty-reply hotfix already applied"
-          fi
 
       - name: Syntax and architecture guards
         shell: bash
@@ -61,7 +42,6 @@ jobs:
           node --check scripts/web-smoke.js
           node --check scripts/mock-ollama.js
           node --check scripts/runtime-smoke.js
-          node --check scripts/patch-empty-reply-fallback.js
           grep -q "<Component" pages/_app.js
           grep -q "JarvisRuntimeFinal" pages/_app.js
           grep -q "FastMapRuntime" pages/_app.js
