@@ -22,6 +22,7 @@ jobs:
         run: |
           node --check companion/server.js
           node --check companion/mcp-server.js
+          node --check companion/spotify-server.js
           node --check companion/agents.js
           node --check companion/policy.js
           node --check companion/launcher.js
@@ -36,6 +37,6 @@ jobs:
         working-directory: companion
         run: npm install --ignore-scripts
 
-      - name: Verify local core can load
+      - name: Verify local modules can load
         working-directory: companion
         run: node -e "require('./agents'); require('./policy'); console.log('local modules ok')"
