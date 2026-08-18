@@ -23,6 +23,7 @@ jobs:
           node --check companion/server.js
           node --check companion/mcp-server.js
           node --check companion/spotify-server.js
+          node --check companion/browser-server.js
           node --check companion/agents.js
           node --check companion/policy.js
           node --check companion/launcher.js
@@ -39,4 +40,4 @@ jobs:
 
       - name: Verify local modules can load
         working-directory: companion
-        run: node -e "require('./agents'); require('./policy'); console.log('local modules ok')"
+        run: node -e "require('./agents'); require('./policy'); require('playwright-core'); console.log('local modules ok')"
