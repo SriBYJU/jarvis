@@ -1,0 +1,307 @@
+const express = require('express');
+const cors = require('cors');
+
+const app = express();
+const PORT = Number(process.env.JARVIS_REALTIME_PORT || 3007);
+const CORE_URL = `http://127.0.0.1:${Number(process.env.JARVIS_PORT || 3003)}`;
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
+const MODEL = process.env.JARVIS_MODEL || 'qwen3:4b';
+const KEEP_ALIVE = process.env.JARVIS_KEEP_ALIVE || '45m';
+
+function allowedOrigins() {
+  const extra = (process.env.JARVIS_WEB_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean);
+  return new Set(['https://sribyju.github.io', ...extra]);
+}
+function originAllowed(origin) {
+  return !origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin) || allowedOrigins().has(origin);
+}
+app.use(cors({ origin(origin, cb) { const ok = originAllowed(origin); cb(ok ? null : new Error('Origin not paired with JARVIS'), ok); } }));
+app.use(express.json({ limit: '8mb' }));
+app.use((req, res, next) => {
+  if (req.headers.origin && !originAllowed(req.headers.origin)) return res.status(403).json({ error: 'Origin not paired with JARVIS realtime core' });
+  next();
+});
+
+function clip(value, n = 6000) {
+  const s = typeof value === 'string' ? value : JSON.stringify(value);
+  return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+function cleanText(text) { return String(text || '').replace(/^\s*(?:hey\s+)?jarvis\s*[,.:;\-]?\s*/i, '').trim(); }
+function cleanReply(value) {
+  let text = String(value || '').trim();
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  text = text.replace(/^\s*(?:okay[, .-]*)?(?:let me think|let's see|first i need to|i should check)[\s\S]*?(?=\n\n|$)/i, '').trim();
+  const banned = /\b(?:the user|user is asking|user wants|user said|let me think|first i need to|i should check|looking at the hud|tools section|function called|chain of thought|my reasoning)\b/i;
+  if (banned.test(text)) text = text.split(/(?<=[.!?])\s+/).filter(s => !banned.test(s)).join(' ').trim();
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  if (!text) return 'I’m here, sir.';
+  return text.length > 1000 ? `${text.slice(0, 997).replace(/\s+\S*$/, '')}…` : text;
+}
+function subjectFrom(text) {
+  const t = String(text || '').toLowerCase();
+  for (const type of ['map', 'weather', 'system', 'browser', 'media', 'spotify', 'briefing', 'mission', 'integration']) if (t.includes(type)) return type === 'spotify' ? 'media' : type;
+  return 'selected';
+}
+function positionFrom(text) {
+  const t = String(text || '').toLowerCase();
+  if (/top[ -]?right|upper[ -]?right/.test(t)) return 'top-right';
+  if (/top[ -]?left|upper[ -]?left/.test(t)) return 'top-left';
+  if (/bottom[ -]?right|lower[ -]?right/.test(t)) return 'bottom-right';
+  if (/bottom[ -]?left|lower[ -]?left/.test(t)) return 'bottom-left';
+  if (/\bcenter|middle\b/.test(t)) return 'center';
+  if (/\bright\b/.test(t)) return 'right';
+  if (/\bleft\b/.test(t)) return 'left';
+  return null;
+}
+function mapPlace(text) {
+  const patterns = [
+    /(?:show|pull|bring|put|open|give)(?:\s+me)?\s+(?:up\s+)?(?:a\s+)?map\s+(?:of|for)\s+(.+)/i,
+    /(?:map|location)\s+(?:of|for)\s+(.+)/i,
+    /(?:show|pull|bring)\s+(.+?)\s+(?:on|in)\s+(?:the\s+)?map/i,
+  ];
+  for (const p of patterns) {
+    const m = String(text || '').match(p);
+    if (m?.[1]) return m[1].replace(/[?.!]+$/, '').trim();
+  }
+  return null;
+}
+
+async function coreAction(name, args = {}) {
+  try {
+    const r = await fetch(`${CORE_URL}/v1/action`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, args }), signal: AbortSignal.timeout(12000),
+    });
+    const data = await r.json().catch(() => ({}));
+    return r.ok ? data : { ok: false, error: data.error || `Core HTTP ${r.status}` };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+const APP_ALIASES = {
+  'calculator': 'calc', 'calc': 'calc', 'notepad': 'notepad', 'spotify': 'spotify',
+  'explorer': 'explorer', 'file explorer': 'explorer', 'vscode': 'code', 'visual studio code': 'code',
+  'chrome': 'chrome', 'google chrome': 'chrome', 'discord': 'discord', 'steam': 'steam',
+};
+
+function instantCommand(input) {
+  const text = cleanText(input), t = text.toLowerCase();
+  if (!t) return { reply: 'Ready, sir.', model: 'instant/final' };
+  if (/^(?:stop talking|stop speaking|be quiet|mute|quiet|shut up|stop)$/.test(t)) return { reply: '', clientAction: 'stop-speaking', model: 'instant/final' };
+  if (/^(?:hi|hey|hello|yo|sup|what's up|whats up)[?.!\s]*$/.test(t)) return { reply: 'I’m here, sir. What’s up?', model: 'instant/final' };
+  if (/^(?:thanks|thank you|appreciate it|ty)[?.!\s]*$/.test(t)) return { reply: 'Anytime, sir.', model: 'instant/final' };
+  if (/\b(?:what(?:'s| is) the time|what time is it|current time|time right now)\b/.test(t)) return { reply: `It's ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`, model: 'instant/final' };
+  if (/\b(?:what(?:'s| is) the date|what day is it|current date|today's date)\b/.test(t)) return { reply: `Today is ${new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}.`, model: 'instant/final' };
+  if (/^(?:what can you do|what are you capable of|capabilities)[?.!\s]*$/.test(t)) return { reply: 'I can talk naturally, control the HUD, open apps, browse with your dedicated profile, work with files, run local agents, control Spotify, handle maps and weather, remember context, and use connected services.', model: 'instant/final' };
+
+  if (/\b(?:clear|wipe|get rid of|remove|close)\b.*\b(?:everything|all panels|the hud|the screen|all of this)\b/.test(t)) return { reply: 'Cleared.', model: 'instant/final', hudActions: [{ action: 'clear' }] };
+  if (/\b(?:save|remember)\b.*\b(?:layout|workspace|hud|setup)\b/.test(t)) return { reply: 'Saved.', model: 'instant/final', hudActions: [{ action: 'save' }] };
+  if (/\b(?:restore|load|bring back)\b.*\b(?:layout|workspace|hud|setup)\b/.test(t)) return { reply: 'Restored.', model: 'instant/final', hudActions: [{ action: 'restore' }] };
+
+  const target = subjectFrom(t), position = positionFrom(t);
+  if (/\b(?:full[ -]?screen|whole screen|maximi[sz]e|fill the screen|take (?:up )?the (?:whole )?screen)\b/.test(t)) return { reply: 'Done.', model: 'instant/final', hudActions: [{ action: 'resize', target, position: 'full' }] };
+  if (position && /\b(?:move|put|place|shift|send)\b/.test(t)) return { reply: 'Done.', model: 'instant/final', hudActions: [{ action: 'move', target, position }] };
+  if (/\b(?:make|resize)\b.*\b(?:bigger|larger|wider)\b|\b(?:bigger|larger)\b.*\b(?:that|it|map|panel|weather|system)\b/.test(t)) return { reply: 'Done.', model: 'instant/final', hudActions: [{ action: 'resize', target, scale: 1.22 }] };
+  if (/\b(?:make|resize)\b.*\b(?:smaller|compact)\b|\bsmaller\b.*\b(?:that|it|map|panel|weather|system)\b/.test(t)) return { reply: 'Done.', model: 'instant/final', hudActions: [{ action: 'resize', target, scale: .82 }] };
+  if (/\bzoom\s+in\b/.test(t)) return { reply: '', model: 'instant/final', hudActions: [{ action: 'map-command', target: target === 'selected' ? 'map' : target, command: 'zoom-in' }] };
+  if (/\bzoom\s+out\b/.test(t)) return { reply: '', model: 'instant/final', hudActions: [{ action: 'map-command', target: target === 'selected' ? 'map' : target, command: 'zoom-out' }] };
+  if (/\b(?:close|remove|get rid of|hide)\b/.test(t) && /\b(?:that|it|map|panel|weather|system|browser|briefing)\b/.test(t)) return { reply: 'Done.', model: 'instant/final', hudActions: [{ action: 'remove', target }] };
+
+  const place = mapPlace(text);
+  if (place) return { reply: `Pulling up ${place}.`, model: 'instant/final', hudActions: [{ action: 'show', panelType: 'map', title: `GEO // ${place.toUpperCase()}`, query: place, position: 'center', singleton: true }] };
+  if (/^(?:system status|system info|diagnostics|how(?:'s| is) my (?:computer|pc|system))/.test(t)) return { coreTool: { name: 'system_info', args: {} }, model: 'instant/final' };
+  const weather = text.match(/(?:weather|temperature|forecast).*?(?:in|for|at)\s+(.+)/i);
+  if (weather?.[1]) return { coreTool: { name: 'weather', args: { location: weather[1].replace(/[?.!]+$/, '') } }, model: 'instant/final' };
+  if (/\b(?:brief me|what did i miss|catch me up|how(?:'s| is) everything doing)\b/.test(t)) return { coreTool: { name: 'briefing', args: {} }, model: 'instant/final' };
+
+  const spotifyPlay = text.match(/(?:play|put on)\s+(.+?)(?:\s+on spotify)?[?.!]*$/i);
+  if (spotifyPlay && !/\b(?:youtube|video)\b/i.test(text)) return { coreTool: { name: 'spotify', args: { action: 'play', query: spotifyPlay[1].replace(/\s+on spotify$/i, '').trim() } }, model: 'instant/final' };
+  if (/\b(?:pause|stop)\b.*\bspotify\b|^pause music$/i.test(t)) return { coreTool: { name: 'spotify', args: { action: 'pause' } }, model: 'instant/final' };
+  if (/^(?:next|skip)(?: song| track)?[?.!]*$/i.test(t)) return { coreTool: { name: 'spotify', args: { action: 'next' } }, model: 'instant/final' };
+  if (/^previous(?: song| track)?[?.!]*$/i.test(t)) return { coreTool: { name: 'spotify', args: { action: 'previous' } }, model: 'instant/final' };
+
+  const openApp = text.match(/^open\s+(chrome|google chrome|spotify|notepad|calculator|calc|discord|steam|explorer|file explorer|visual studio code|vscode)(?:\s+please)?[?.!]*$/i);
+  if (openApp) return { coreTool: { name: 'open_app', args: { app: APP_ALIASES[openApp[1].toLowerCase()] || openApp[1] } }, model: 'instant/final' };
+  const urlMatch = text.match(/\bhttps?:\/\/[^\s]+/i);
+  if (urlMatch && /\b(?:open|go to|launch)\b/i.test(text)) return { coreTool: { name: 'open_url', args: { url: urlMatch[0] } }, model: 'instant/final' };
+  return null;
+}
+
+const HUD_TOOL = {
+  type: 'function', function: { name: 'hud', description: 'Manipulate the visible JARVIS HUD silently.', parameters: { type: 'object', properties: { action: { type: 'string', enum: ['show', 'move', 'resize', 'remove', 'clear', 'save', 'restore', 'map-command'] }, target: { type: 'string' }, panelType: { type: 'string' }, title: { type: 'string' }, query: { type: 'string' }, position: { type: 'string' }, scale: { type: 'number' }, command: { type: 'string' }, data: { type: 'object' } }, required: ['action'] } }
+};
+const CORE_TOOL = {
+  type: 'function', function: { name: 'core_tool', description: 'Use a live local capability rather than guessing.', parameters: { type: 'object', properties: { name: { type: 'string', enum: ['weather', 'system_info', 'open_app', 'open_url', 'browser', 'spotify', 'briefing', 'list_files', 'read_file', 'write_file', 'remember', 'recall', 'delegate', 'background_task', 'mcp'] }, args: { type: 'object' } }, required: ['name'] } }
+};
+function sceneText(scene) {
+  const items = Array.isArray(scene?.panels) ? scene.panels : [];
+  if (!items.length) return 'Visible HUD: no active tool panels.';
+  return `Visible HUD: ${items.map(p => `${p.id}:${p.panelType}${p.query ? `(${p.query})` : ''}`).join(', ')}. Selected: ${scene?.selectedId || 'none'}.`;
+}
+
+async function callOllama(messages, scene, agent = false) {
+  const system = `You are J.A.R.V.I.S., a fast, highly capable local personal AI. Speak directly and naturally to the person in front of you. You understand fragments, corrections, pronouns, and conversational follow-ups.\n\n${sceneText(scene)}\n\nNON-NEGOTIABLE RULES:\n- Never call the person "the user".\n- Never expose or narrate reasoning, hidden analysis, planning, chain-of-thought, tool selection, or internal state.\n- Never say "let me think", "first I need to", "I should check", or similar internal narration.\n- Never print tool JSON. Use tools silently.\n- For live facts or actions, use core_tool rather than guessing.\n- For visible UI changes, use hud.\n- Resolve "that", "it", and "this" from the visible selected/recent panel.\n- Do not create duplicate panels when modifying an existing one.\n- Never claim an action succeeded when a tool failed.\n- Default to one or two concise spoken sentences unless more detail was explicitly requested.\n- You may say "sir" naturally, but not in every sentence.\n- Sound competent and human, not robotic or verbose.${agent ? '\n- For a multi-step mission, use tools in sequence, verify results, and stop if a required tool reports failure or approval is needed.' : ''}`;
+  const response = await fetch(`${OLLAMA_URL}/api/chat`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: MODEL, messages: [{ role: 'system', content: system }, ...messages.slice(-10)], tools: [HUD_TOOL, CORE_TOOL], think: false, stream: false, keep_alive: KEEP_ALIVE, options: { temperature: agent ? .1 : .16, num_ctx: 4096, num_predict: agent ? 260 : 180, repeat_penalty: 1.08 } }),
+    signal: AbortSignal.timeout(agent ? 22000 : 14000),
+  });
+  if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`);
+  return response.json();
+}
+function leakedToolCall(content) {
+  const text = String(content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  try { const x = JSON.parse(text); if (x?.name && (x.arguments || x.args)) return { name: x.name, args: x.arguments || x.args }; } catch {}
+  const m = text.match(/\{[\s\S]*\}/);
+  if (m) { try { const x = JSON.parse(m[0]); if (x?.name && (x.arguments || x.args)) return { name: x.name, args: x.arguments || x.args }; } catch {} }
+  return null;
+}
+
+async function runConversation(text, history, scene, maxSteps = 3, agent = false) {
+  const messages = (history || []).slice(-8).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '') }));
+  if (!messages.length || messages[messages.length - 1].content !== text) messages.push({ role: 'user', content: text });
+  const hudActions = [], toolTrace = [];
+  for (let step = 0; step < maxSteps; step++) {
+    const response = await callOllama(messages, scene, agent);
+    const msg = response.message || {};
+    let calls = msg.tool_calls || [];
+    if (!calls.length) {
+      const leak = leakedToolCall(msg.content);
+      if (leak) calls = [{ function: { name: leak.name, arguments: leak.args } }];
+    }
+    if (!calls.length) return { reply: cleanReply(msg.content || 'Done.'), model: `local/${response.model || MODEL}`, hudActions, toolTrace };
+    messages.push(msg);
+    for (const call of calls) {
+      const name = call.function?.name;
+      let args = call.function?.arguments || {};
+      if (typeof args === 'string') { try { args = JSON.parse(args); } catch { args = {}; } }
+      let result;
+      if (name === 'hud') {
+        const action = { ...args };
+        if (action.action === 'show') action.singleton = action.singleton ?? ['map', 'weather', 'system', 'media', 'briefing'].includes(action.panelType);
+        hudActions.push(action); result = { ok: true, applied: true };
+      } else if (name === 'core_tool') {
+        result = await coreAction(args.name, args.args || {});
+        if (result.hudActions) hudActions.push(...result.hudActions);
+      } else result = { ok: false, error: 'Unknown local tool' };
+      toolTrace.push({ name: name === 'core_tool' ? args.name : name, ok: result?.ok !== false, error: result?.error || null });
+      messages.push({ role: 'tool', tool_name: name, content: clip(result, 1900) });
+      if (result?.approvalRequired) return { reply: result.message || 'I need your approval before I do that.', model: `local/${MODEL}`, hudActions, toolTrace };
+    }
+  }
+  return { reply: 'I reached the safe step limit before finishing that, sir.', model: `local/${MODEL}`, hudActions, toolTrace };
+}
+
+function summarizeCoreResult(name, result) {
+  if (result?.ok === false) return result.error || 'That local tool is unavailable.';
+  const d = result?.data || result || {};
+  if (name === 'system_info') return d.memoryUsagePercent != null ? `System is online. Memory usage is ${d.memoryUsagePercent}%.` : 'System status is up.';
+  if (name === 'weather') {
+    const loc = d.location || {}, c = d.current || {};
+    return c.temperature_2m != null ? `${loc.name || 'There'} is ${Math.round(c.temperature_2m)}°F right now.` : 'Weather is up.';
+  }
+  if (name === 'briefing') return 'Briefing ready.';
+  if (name === 'spotify') return 'Done.';
+  if (name === 'open_app' || name === 'open_url') return 'Opened.';
+  return 'Done.';
+}
+
+function legacyToolFromHud(action) {
+  if (!action || action.action !== 'show') return null;
+  const type = String(action.panelType || '').toLowerCase();
+  const raw = action.data?.data || action.data || {};
+  if (type === 'map') return { type: 'map', data: { query: action.query || raw.query || 'London' } };
+  if (type === 'system') return { type: 'system', data: raw };
+  if (type === 'weather') {
+    const loc = raw.location || {}, c = raw.current || {};
+    return { type: 'weather', data: { city: loc.name || action.query || 'Weather', country: loc.country || '', temp: c.temperature_2m, feels_like: c.apparent_temperature, humidity: c.relative_humidity_2m, wind: c.wind_speed_10m, description: c.precipitation > 0 ? 'precipitation' : 'current conditions', icon: '' } };
+  }
+  if (type === 'browser') return { type: 'browse', data: { url: raw.url || '', title: raw.title || 'Browser', content: raw.text || raw.content || 'Browser ready.' } };
+  return null;
+}
+
+async function geocodeOpenMeteo(query) {
+  const clean = query.replace(/\s+/g, ' ').trim();
+  const stateMatch = clean.match(/^(.*?)(?:,|\s+)\s*(Virginia|VA|California|CA|New York|NY|Texas|TX|Florida|FL|North Carolina|NC|South Carolina|SC|Maryland|MD|Washington|WA|DC)$/i);
+  const candidates = [clean];
+  if (stateMatch) candidates.push(`${stateMatch[1]}, ${stateMatch[2]}`, stateMatch[1]);
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(candidate)}&count=10&language=en&format=json`, { signal: AbortSignal.timeout(3000) });
+      const d = await r.json();
+      const rows = d.results || [];
+      if (!rows.length) continue;
+      const state = stateMatch?.[2]?.replace(/^VA$/i, 'Virginia').replace(/^CA$/i, 'California').replace(/^NY$/i, 'New York').replace(/^TX$/i, 'Texas').replace(/^FL$/i, 'Florida');
+      const x = state ? rows.find(v => String(v.admin1 || '').toLowerCase().includes(state.toLowerCase())) || rows[0] : rows[0];
+      return { name: x.name, country: x.country, admin1: x.admin1, latitude: x.latitude, longitude: x.longitude, timezone: x.timezone };
+    } catch {}
+  }
+  return null;
+}
+async function geocodeNominatim(query) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`, { headers: { 'User-Agent': 'JARVIS-Local/6.1' }, signal: AbortSignal.timeout(3500) });
+    const rows = await r.json(); const x = rows?.[0];
+    return x ? { name: x.name || String(x.display_name || query).split(',')[0], country: '', admin1: '', latitude: Number(x.lat), longitude: Number(x.lon), timezone: '' } : null;
+  } catch { return null; }
+}
+
+app.get('/health', async (_req, res) => {
+  let ollama = false;
+  try { ollama = (await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(850) })).ok; } catch {}
+  res.json({ ok: true, name: 'JARVIS Realtime', version: '6.1.0', ollama, model: MODEL, keepAlive: KEEP_ALIVE });
+});
+app.get('/v1/geocode', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.status(400).json({ ok: false, error: 'q is required' });
+  const loc = await geocodeOpenMeteo(q) || await geocodeNominatim(q);
+  if (!loc) return res.status(404).json({ ok: false, error: `Could not locate ${q}` });
+  res.json({ ok: true, location: loc });
+});
+app.post('/v1/command', async (req, res) => {
+  const started = Date.now();
+  const text = String(req.body?.message || req.body?.text || '').trim();
+  if (!text) return res.status(400).json({ error: 'message is required' });
+  try {
+    const instant = instantCommand(text);
+    if (instant?.coreTool) {
+      const result = await coreAction(instant.coreTool.name, instant.coreTool.args);
+      return res.json({ reply: summarizeCoreResult(instant.coreTool.name, result), model: instant.model, hudActions: result.hudActions || [], clientAction: instant.clientAction, latencyMs: Date.now() - started });
+    }
+    if (instant) return res.json({ ...instant, latencyMs: Date.now() - started });
+    const result = await runConversation(text, req.body?.messages || [], req.body?.scene || {}, 3, false);
+    res.json({ ...result, reply: cleanReply(result.reply), latencyMs: Date.now() - started });
+  } catch (e) {
+    res.status(503).json({ error: e.message, reply: 'I hit a local error instead of making you wait, sir.', model: 'local/error', latencyMs: Date.now() - started });
+  }
+});
+app.post('/v1/agent', async (req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+  const send = event => res.write(`data: ${JSON.stringify(event)}\n\n`);
+  const message = String(req.body?.message || '').trim();
+  send({ type: 'status', text: 'JARVIS local agent online' });
+  send({ type: 'plan', taskName: message.slice(0, 72) || 'Mission', steps: ['Understand objective', 'Use the right local tools', 'Verify the result', 'Report back'] });
+  try {
+    send({ type: 'step', index: 0 });
+    const result = await runConversation(message, req.body?.messages || [], req.body?.scene || {}, 5, true);
+    send({ type: 'step', index: 1 });
+    for (const trace of result.toolTrace || []) send({ type: 'status', text: `${trace.name}: ${trace.ok ? 'complete' : 'blocked'}` });
+    for (const action of result.hudActions || []) {
+      const tool = legacyToolFromHud(action);
+      if (tool) send({ type: 'tool', tool });
+    }
+    send({ type: 'step', index: 2 });
+    send({ type: 'step', index: 3 });
+    send({ type: 'reply', text: cleanReply(result.reply), model: result.model || `local/${MODEL}` });
+    send({ type: 'done' });
+  } catch (e) {
+    send({ type: 'error', text: 'The local agent hit an error instead of hanging.' });
+  }
+  res.end();
+});
+
+app.listen(PORT, '127.0.0.1', async () => {
+  console.log(`JARVIS Realtime final v6.1 online at http://127.0.0.1:${PORT}`);
+  try {
+    await fetch(`${OLLAMA_URL}/api/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: MODEL, prompt: '', stream: false, think: false, keep_alive: KEEP_ALIVE }), signal: AbortSignal.timeout(30000) });
+    console.log(`JARVIS Realtime model warm: ${MODEL}`);
+  } catch (e) { console.log(`JARVIS Realtime model warm-up skipped: ${e.message}`); }
+});
