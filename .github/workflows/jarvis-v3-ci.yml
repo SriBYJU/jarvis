@@ -7,9 +7,6 @@ on:
       - 'agent/**'
   pull_request:
 
-permissions:
-  contents: write
-
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -20,22 +17,6 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-
-      - name: Apply one-time final semantics hardening
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/agent/')
-        shell: bash
-        run: |
-          node scripts/patch-chat-side-doors.js
-          node scripts/patch-final-semantics.js
-          if ! git diff --quiet -- pages/api/chat.js components/JarvisRuntimeFinal.js companion/realtime-final-server.js; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add pages/api/chat.js components/JarvisRuntimeFinal.js companion/realtime-final-server.js
-            git commit -m "Finish local model, mode, and live-data semantics"
-            git push origin HEAD:${GITHUB_REF_NAME}
-          else
-            echo "final semantics already hardened"
-          fi
 
       - name: Syntax and architecture guards
         shell: bash
@@ -51,12 +32,16 @@ jobs:
           node --check lib/store.js
           node --check lib/llm.js
           node --check lib/urlSafety.js
+          node --check pages/api/chat.js
+          node --check pages/api/models.js
+          node --check pages/api/upload.js
+          node --check pages/api/tools/execute.js
+          node --check pages/api/tools/browse.js
+          node --check pages/api/tools/screenshot.js
           node --check pages/api/tools/generate-file.js
           node --check scripts/web-smoke.js
           node --check scripts/mock-ollama.js
           node --check scripts/runtime-smoke.js
-          node --check scripts/patch-chat-side-doors.js
-          node --check scripts/patch-final-semantics.js
           grep -q "<Component" pages/_app.js
           grep -q "JarvisRuntimeFinal" pages/_app.js
           grep -q "FastMapRuntime" pages/_app.js
@@ -78,6 +63,9 @@ jobs:
           grep -q "serverExecuted: false" pages/api/chat.js
           ! grep -q 'new Function("console"' pages/api/chat.js
           grep -q "I won't guess or invent live results" pages/api/chat.js
+          grep -q "safeHttpFetch" pages/api/tools/browse.js
+          grep -q "safeHttpFetch" pages/api/tools/screenshot.js
+          grep -q "serverExecuted: false" pages/api/tools/execute.js
           ! grep -q '"xlsx"' package.json
           ! grep -q '"pptxgenjs"' package.json
           ! grep -q '"@vercel/kv"' package.json
