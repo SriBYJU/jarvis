@@ -1,4 +1,10 @@
 import '../styles/globals.css';
+import '../styles/jarvis-core.css';
+import JarvisCoreOverlay from '../components/JarvisCoreOverlay';
+
 export default function App({ Component, pageProps }) {
-  return <Component {...pageProps} />;
+  return <>
+    <Component {...pageProps} />
+    <JarvisCoreOverlay />
+  </>;
 }
