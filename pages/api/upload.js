@@ -1,5 +1,7 @@
 export const config = { api: { bodyParser: false } };
 
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
 function parseMultipart(buf, boundary) {
   const parts = [];
   const boundaryBuf = Buffer.from("--" + boundary);
@@ -7,7 +9,9 @@ function parseMultipart(buf, boundary) {
   while (start !== -1) {
     start += boundaryBuf.length;
     if (buf[start] === 0x2d && buf[start + 1] === 0x2d) break;
-    start = buf.indexOf(Buffer.from("\r\n"), start) + 2;
+    const lineBreak = buf.indexOf(Buffer.from("\r\n"), start);
+    if (lineBreak === -1) break;
+    start = lineBreak + 2;
     const headerEnd = buf.indexOf(Buffer.from("\r\n\r\n"), start);
     if (headerEnd === -1) break;
     const headers = buf.slice(start, headerEnd).toString("utf-8");
@@ -34,31 +38,47 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const contentType = req.headers["content-type"] || "";
-  const boundaryMatch = contentType.match(/boundary=(.+)/);
-  if (!boundaryMatch) return res.status(400).json({ error: "No multipart boundary found" });
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  const boundary = boundaryMatch?.[1] || boundaryMatch?.[2]?.trim();
+  if (!boundary) return res.status(400).json({ error: "No multipart boundary found" });
+
+  const declaredLength = Number(req.headers["content-length"] || 0);
+  if (declaredLength > MAX_UPLOAD_BYTES) {
+    return res.status(413).json({ error: "File upload exceeds the 5 MB limit" });
+  }
 
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const buf = Buffer.concat(chunks);
+  let total = 0;
+  try {
+    for await (const chunk of req) {
+      total += chunk.length;
+      if (total > MAX_UPLOAD_BYTES) {
+        return res.status(413).json({ error: "File upload exceeds the 5 MB limit" });
+      }
+      chunks.push(chunk);
+    }
+  } catch (e) {
+    return res.status(400).json({ error: `Upload failed: ${e.message}` });
+  }
 
-  const parts = parseMultipart(buf, boundaryMatch[1]);
+  const buf = Buffer.concat(chunks);
+  const parts = parseMultipart(buf, boundary);
   const filePart = parts.find(p => p.filename);
   if (!filePart) return res.status(400).json({ error: "No file uploaded" });
 
-  const name = filePart.filename;
+  const name = String(filePart.filename || "upload").replace(/[\r\n\0]/g, "").slice(0, 240);
   const ext = (name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
   const size = filePart.data.length;
-  const textExts = [".txt", ".md", ".js", ".ts", ".py", ".json", ".csv", ".html", ".css", ".xml", ".yaml", ".yml", ".sh", ".env", ".log", ".jsx", ".tsx", ".sql", ".java", ".c", ".cpp", ".h", ".rs", ".go", ".rb", ".php"];
+  const textExts = [".txt", ".md", ".js", ".ts", ".py", ".json", ".csv", ".html", ".css", ".xml", ".yaml", ".yml", ".sh", ".log", ".jsx", ".tsx", ".sql", ".java", ".c", ".cpp", ".h", ".rs", ".go", ".rb", ".php"];
   const isText = textExts.includes(ext);
 
   let content = null;
-  if (isText) {
-    content = filePart.data.toString("utf-8").slice(0, 10000);
-  }
+  if (isText) content = filePart.data.toString("utf-8").slice(0, 10000);
 
   let pdfText = null;
   if (ext === ".pdf") {
-    const raw = filePart.data.toString("utf-8").replace(/[^\x20-\x7E\n\r\t]/g, " ").replace(/\s+/g, " ").trim();
+    // Best-effort preview only. Full PDF analysis should use a dedicated parser/vision path.
+    const raw = filePart.data.toString("latin1").replace(/[^\x20-\x7E\n\r\t]/g, " ").replace(/\s+/g, " ").trim();
     if (raw.length > 100) pdfText = raw.slice(0, 10000);
   }
 
