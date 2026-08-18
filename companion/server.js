@@ -142,10 +142,28 @@ function instantRoute(text) {
 }
 
 async function callOllama(messages, systemPrompt, tools) {
-  const h = await ollamaHealth(); if (!h.online) return { ok: false, offline: true, error: "Ollama is not running" };
-  const preferred = process.env.JARVIS_MODEL || (h.models.includes(DEFAULT_MODEL) ? DEFAULT_MODEL : h.models[0]); if (!preferred) return { ok: false, offline: true, error: "No Ollama model installed" };
-  const r = await fetch(`${OLLAMA_URL}/api/chat`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: preferred, messages: [{ role: "system", content: systemPrompt }, ...messages], tools, stream: false, options: { temperature: 0.22 } }), signal: AbortSignal.timeout(90000) });
-  if (!r.ok) return { ok: false, error: `Ollama HTTP ${r.status}: ${clip(await r.text(), 500)}` }; const d = await r.json(); return { ok: true, model: d.model || preferred, message: d.message || {} };
+  const preferred = process.env.JARVIS_MODEL || DEFAULT_MODEL;
+  try {
+    const r = await fetch(`${OLLAMA_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: preferred,
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
+        tools,
+        think: false,
+        stream: false,
+        keep_alive: process.env.JARVIS_KEEP_ALIVE || "45m",
+        options: { temperature: 0.16, num_ctx: 4096, num_predict: 240, repeat_penalty: 1.08 },
+      }),
+      signal: AbortSignal.timeout(22000),
+    });
+    if (!r.ok) return { ok: false, offline: r.status === 404 || r.status === 503, error: `Ollama HTTP ${r.status}: ${clip(await r.text(), 500)}` };
+    const d = await r.json();
+    return { ok: true, model: d.model || preferred, message: d.message || {} };
+  } catch (e) {
+    return { ok: false, offline: true, error: e.name === "TimeoutError" ? "Local model timed out" : e.message };
+  }
 }
 
 async function runAgent(agentId, objective, history = [], opts = {}) {
@@ -174,7 +192,7 @@ let workerBusy = false;
 async function processOneTask() { if (workerBusy) return; const all = tasks(); const i = all.findIndex(t => t.status === "queued"); if (i < 0) return; workerBusy = true; all[i].status = "running"; all[i].updatedAt = new Date().toISOString(); saveTasks(all); try { const r = await runAgent(all[i].agent || "jarvis", all[i].objective, [], { maxSteps: 8 }); const latest = tasks(); const j = latest.findIndex(t => t.id === all[i].id); if (j >= 0) { latest[j].status = r.ok ? "complete" : "blocked"; latest[j].result = r.reply; latest[j].error = r.error || null; latest[j].hudActions = r.hudActions || []; latest[j].toolTrace = r.toolTrace || []; latest[j].updatedAt = new Date().toISOString(); saveTasks(latest); } } catch (e) { const latest = tasks(); const j = latest.findIndex(t => t.id === all[i].id); if (j >= 0) { latest[j].status = "failed"; latest[j].error = e.message; latest[j].updatedAt = new Date().toISOString(); saveTasks(latest); } } finally { workerBusy = false; } }
 setInterval(processOneTask, 4000);
 
-app.get("/health", async (_req, res) => { const oh = await ollamaHealth(); const [mcp, spotify, browser] = await Promise.all([jsonFetch(`${MCP_URL}/health`, {}, 1000), jsonFetch(`${SPOTIFY_URL}/health`, {}, 1000), jsonFetch(`${BROWSER_URL}/health`, {}, 1600)]); res.json({ status: "online", name: "J.A.R.V.I.S. Local Core", version: "3.2.0", platform: process.platform, ollama: oh, agents: listAgents(), workspaces: roots(), services: { mcp: mcp.ok, spotify: spotify.ok, browser: browser.ok && browser.data?.connected }, capabilities: ["local-ai", "tool-calling", "sub-agents", "background-tasks", "memory", "files", "apps", "browser", "mcp", "spotify", "briefing", "system", "weather", "dynamic-hud", "cloud-fallback"] }); });
+app.get("/health", async (_req, res) => { const oh = await ollamaHealth(); const [mcp, spotify, browser] = await Promise.all([jsonFetch(`${MCP_URL}/health`, {}, 1000), jsonFetch(`${SPOTIFY_URL}/health`, {}, 1000), jsonFetch(`${BROWSER_URL}/health`, {}, 1600)]); res.json({ status: "online", name: "J.A.R.V.I.S. Local Core", version: "3.2.0", platform: process.platform, ollama: oh, agents: listAgents(), workspaces: roots(), services: { mcp: mcp.ok, spotify: spotify.ok, browser: browser.ok }, capabilities: ["local-ai", "tool-calling", "sub-agents", "background-tasks", "memory", "files", "apps", "browser", "mcp", "spotify", "briefing", "system", "weather", "dynamic-hud", "cloud-fallback"] }); });
 app.post("/v1/chat", async (req, res) => { try { const r = await handleChat(req.body || {}); if (r.offline) return res.status(503).json(r); res.json(r); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.post("/v1/agent", async (req, res) => { res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" }); const send = x => res.write(`data: ${JSON.stringify(x)}\n\n`); const message = req.body?.message || ""; send({ type: "status", text: "JARVIS local core online" }); send({ type: "plan", taskName: message.slice(0, 70) || "Mission", steps: ["Understand objective", "Select tools or specialist", "Execute", "Verify and report"] }); try { send({ type: "step", index: 0 }); const r = await runAgent("jarvis", message, req.body?.messages || [], { maxSteps: 8 }); for (const trace of r.toolTrace || []) send({ type: "status", text: `${trace.name}: ${trace.approvalRequired ? "approval needed" : trace.ok ? "complete" : "blocked"}` }); for (const hud of r.hudActions || []) send({ type: "hud", action: hud }); send({ type: "step", index: 3 }); send({ type: "reply", text: r.reply, model: r.model || "local" }); send({ type: "done" }); } catch (e) { send({ type: "error", text: e.message }); } res.end(); });
 app.get("/v1/tasks", (_req, res) => res.json({ ok: true, tasks: tasks() }));

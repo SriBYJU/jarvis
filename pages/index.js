@@ -73,20 +73,29 @@ function cleanResponse(text) {
   return c.trim() || text;
 }
 
-// Simple markdown renderer for chat bubbles
+// Safe lightweight markdown renderer for chat bubbles.
+function escapeHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function renderMarkdown(text) {
   if (!text) return text;
-  // Code blocks
-  let html = text.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre class="md-code-block"><code>$2</code></pre>');
-  // Inline code
+  // Escape model/tool output before adding our own small, known-safe markup.
+  let html = escapeHtml(text);
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre class="md-code-block"><code>$2</code></pre>');
   html = html.replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>');
-  // Bold
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // Italic
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer" style="color:#7ecfff">$1</a>');
-  // Line breaks
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, rawUrl) => {
+    const url = String(rawUrl || "").trim();
+    const safeUrl = /^(https?:\/\/|mailto:)/i.test(url) ? url : "#";
+    return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:#7ecfff">${label}</a>`;
+  });
   html = html.replace(/\n/g, '<br/>');
   return html;
 }
