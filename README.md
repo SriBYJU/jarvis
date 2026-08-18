@@ -3,10 +3,10 @@
 
 ## What changed in v3
 
-The visual identity stays JARVIS. The intelligence layer is rebuilt around a local companion service so the assistant no longer depends on free cloud-model quotas for normal use.
+The visual identity stays JARVIS. The intelligence layer is rebuilt around a local companion service so normal use no longer depends on free cloud-model quotas.
 
 ### Local-first intelligence
-- **Ollama as the primary AI runtime** — local, offline-capable, no per-message API quota
+- **Ollama as the primary AI runtime** — local, offline-capable, no per-message provider quota
 - Existing OpenRouter/Gemini/cloud paths remain available as fallback when the local core is unavailable
 - Conversational tool calling replaces regex-only command handling as the primary intelligence layer
 - Simple commands still use instant routing for speed
@@ -22,77 +22,46 @@ JARVIS acts as the orchestrator and can delegate bounded work to:
 - **ECHO** — communications agent
 - **ARGUS** — monitoring agent
 
-Background missions are persisted locally and continue processing while the companion service is running.
+Background missions persist locally and can continue processing while the companion service is running.
 
 ### Dynamic HUD workspace
 The existing HUD stays in place, and v3 adds an independent floating workspace layer that can be controlled conversationally.
 
-Supported actions include:
-- show panels
-- move panels
-- resize panels
-- clear the workspace
-- save the current layout
-- restore the saved layout
-- remove individual panels
+Supported actions include showing, moving, resizing, clearing, saving, restoring and removing panels. Current v3 modules include holographic-style map, weather, system status, missions, Spotify/media, browser context/screenshots, integration status and executive briefings.
 
-Map, weather, system, mission and media panels are already supported. The design intentionally keeps the futuristic blue HUD feel instead of replacing it with a generic AI dashboard.
+### Real local browser control
+A persistent Playwright/Chrome service gives JARVIS a dedicated browser profile. JARVIS can:
+
+- open real websites and new tabs
+- reuse locally authorized sessions in its own Chrome profile
+- read page content, links and buttons
+- click visible controls
+- fill labeled inputs
+- switch tabs
+- capture the live page into the HUD
+
+Consequential browser actions that look like final submissions, sends, purchases, bookings, deletes or publishing are permission-gated.
+
+### Executive briefing
+Commands such as `what did I miss?`, `brief me`, or `how is everything doing?` assemble a live briefing from background missions, system state, integration health and recent local context, then render it into the HUD.
 
 ### Local computer capabilities
-The companion can currently:
-- read approved local files
-- write approved local files
-- list approved folders
-- launch applications
-- open URLs
-- inspect CPU / memory / OS information
-- store and recall memory
-- run persistent missions
-- call free weather/geocoding services
+The companion can currently read/write approved files, list approved folders, launch applications, open URLs, inspect CPU/memory/OS information, store/recall memory, run persistent missions, operate the JARVIS browser and call free weather/geocoding services.
 
 Desktop, Documents and Downloads are allowed by default. Extra folders must be explicitly added with `JARVIS_WORKSPACES`.
 
 ### Spotify
-A local Spotify PKCE adapter is included. After adding a Spotify Client ID and authorizing once, JARVIS can handle natural commands such as:
-- `play [song or artist]`
-- `pause the music`
-- `skip this song`
-- `go back one track`
-- `volume 40`
+A local Spotify PKCE adapter is included. After adding a Spotify Client ID and authorizing once, JARVIS can handle natural commands such as `play [song or artist]`, `pause the music`, `skip this song`, `go back one track`, and `volume 40`.
 
-Spotify control is kept separate from the AI model so playback commands do not consume model quota.
+Spotify control is kept separate from the AI model so routine playback commands do not consume model requests.
 
 ### MCP / integrations
-A generic local MCP bridge is included for integrations such as:
-- Gmail
-- Google Calendar
-- Buffer
-
-The build can run before those integrations are configured. MCP commands and OAuth/API credentials are added locally later and are not committed to GitHub.
+A generic local MCP bridge is included for integrations such as Gmail, Google Calendar and Buffer. The build works before those integrations are configured. MCP commands and OAuth/API credentials are added locally later and are not committed to GitHub.
 
 ### Existing v2 features preserved
-The original app still contains its existing tools and UI, including:
-- voice input and browser speech output
-- wake-word mode
-- JARVIS / FRIDAY / EDITH personas
-- weather
-- maps
-- YouTube
-- web search and browsing
-- news
-- stocks
-- translation
-- currency and unit conversion
-- world clocks
-- timers and reminders
-- code generation
-- persistent conversation history
-- project tools
-- file generation
-- system / screen panels
-- the animated orb, rings, scanlines and dark HUD aesthetic
+The original app still contains its existing tools and UI, including voice input and browser speech output, wake-word mode, JARVIS / FRIDAY / EDITH personas, weather, maps, YouTube, web search/browsing, news, stocks, translation, currency/unit conversion, world clocks, timers/reminders, code generation, conversation history, project/file tools, system/screen panels, the animated orb, rings, scanlines and dark HUD aesthetic.
 
-The v3 bridge sits above the existing app instead of deleting it, which means old tools remain available as fallbacks while the local runtime takes over normal AI traffic when it is online.
+The v3 bridge sits above the existing app instead of deleting it, so old tools remain available as fallbacks while the local runtime takes over normal AI traffic when online.
 
 ---
 
@@ -116,12 +85,13 @@ The v3 bridge sits above the existing app instead of deleting it, which means ol
             │
       tool calling / memory
             │
-   ┌────────┼─────────┬──────────┐
-   ▼        ▼         ▼          ▼
-  HUD     FILES     APPS       SYSTEM
-   │
-   ├──────── WEATHER / GEO
-   ├──────── BACKGROUND MISSIONS
+   ┌────────┼─────────┬──────────┬───────────┐
+   ▼        ▼         ▼          ▼           ▼
+  HUD     FILES     APPS      BROWSER      SYSTEM
+   │                                │
+   ├──────── WEATHER / GEO           ├── persistent Chrome profile
+   ├──────── BACKGROUND MISSIONS     └── page read/click/fill/tabs
+   ├──────── EXECUTIVE BRIEFING
    ├──────── SPOTIFY ADAPTER
    └──────── MCP BRIDGE
                 │
@@ -161,8 +131,9 @@ The local services run on:
 - `127.0.0.1:3003` — JARVIS Core
 - `127.0.0.1:3004` — MCP Bridge
 - `127.0.0.1:3005` — Spotify Adapter
+- `127.0.0.1:3006` — Persistent Chrome/Playwright Service
 
-When the local core is detected, the top-right badge in the HUD changes to **LOCAL CORE**.
+When the local core is detected, the top-right badge in the HUD changes to **LOCAL CORE** and shows the state of browser, MCP and Spotify services.
 
 ### Ollama
 
@@ -172,13 +143,13 @@ Install and start Ollama, then pull at least one model. The default model name i
 JARVIS_MODEL=qwen3:4b
 ```
 
-The best model depends on the machine's RAM, GPU and VRAM. JARVIS automatically falls back to the first installed model if the configured model is unavailable.
+The best model depends on the machine's RAM, GPU and VRAM. JARVIS falls back to the first installed model if the configured model is unavailable.
 
 ---
 
 ## Integration setup
 
-Do **not** commit secrets.
+Do **not** commit or paste secrets into the repository.
 
 Use `companion/.env` for local credentials and connector commands. The safe template is `companion/.env.example`.
 
@@ -189,6 +160,7 @@ Later configuration can include:
 - `BUFFER_MCP_COMMAND`
 - optional OAuth/API credentials where needed
 - optional `GITHUB_TOKEN`
+- optional browser path/profile overrides
 
 The application is intentionally usable before those values are supplied.
 
@@ -199,22 +171,19 @@ The application is intentionally usable before those values are supplied.
 The local runtime is intentionally not unrestricted.
 
 - localhost-only services
-- explicit allowed web origins
+- explicit paired web origins
 - approved filesystem roots
+- dedicated JARVIS browser profile
 - no default delete-file tool
 - local writes governed by policy
-- external/destructive actions designed to require approval
+- external/destructive browser and MCP actions permission-gated
 - real secrets stay in ignored local environment files
-- background missions have execution checkpoints instead of infinite loops
+- background missions use execution checkpoints instead of infinite loops
 
 ---
 
 ## Validation
 
-The repository includes a JARVIS v3 CI workflow that checks:
-- local-core JavaScript syntax
-- the Next.js production build
-- companion dependency installation
-- core module loading
+The repository includes a JARVIS v3 CI workflow that checks local-core JavaScript syntax, the Next.js production build, companion dependency installation, Playwright module availability and core module loading.
 
-The goal is not to count a feature because a button exists. A v3 feature should be wired end-to-end, fail clearly, preserve fallbacks, and integrate naturally with the HUD.
+The goal is not to count a feature because a button exists. A v3 feature should be wired end-to-end, fail clearly, preserve fallbacks and integrate naturally with the HUD.
