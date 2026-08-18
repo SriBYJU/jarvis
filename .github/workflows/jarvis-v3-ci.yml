@@ -1,4 +1,4 @@
-name: JARVIS v4 CI
+name: JARVIS v5 CI
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       - name: Syntax check local core
         run: |
           node --check companion/server.js
-          node --check companion/realtime-server.js
+          node --check companion/realtime-v5-server.js
           node --check companion/mcp-server.js
           node --check companion/spotify-server.js
           node --check companion/browser-server.js
@@ -32,7 +32,7 @@ jobs:
       - name: Install web dependencies
         run: npm ci
 
-      - name: Build web HUD
+      - name: Build unified Jarvis shell
         run: npm run build
 
       - name: Install local core dependencies
