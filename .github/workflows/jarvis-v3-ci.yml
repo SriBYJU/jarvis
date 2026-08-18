@@ -1,4 +1,4 @@
-name: JARVIS v6 CI
+name: JARVIS Final CI
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,10 +18,10 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Syntax check local core
+      - name: Syntax check local services
         run: |
           node --check companion/server.js
-          node --check companion/realtime-v6-server.js
+          node --check companion/realtime-final-server.js
           node --check companion/mcp-server.js
           node --check companion/spotify-server.js
           node --check companion/browser-server.js
@@ -29,20 +29,38 @@ jobs:
           node --check companion/policy.js
           node --check companion/launcher.js
 
-      - name: Regression guards
+      - name: Architecture regression guards
         shell: bash
         run: |
           grep -q "<Component" pages/_app.js
-          grep -q "JarvisRuntimeV6" pages/_app.js
+          grep -q "JarvisRuntimeFinal" pages/_app.js
           grep -q "FastMapRuntime" pages/_app.js
-          grep -q "realtime-v6-server" companion/launcher.js
+          ! grep -q "JarvisRuntimeV6" pages/_app.js
+          ! grep -q "JarvisShellV5" pages/_app.js
+          grep -q "realtime-final-server" companion/launcher.js
           ! grep -q "realtime-v5-server" companion/launcher.js
+          ! grep -q "realtime-v6-server" companion/launcher.js
           ! grep -A12 'app.get("/health"' companion/browser-server.js | grep -q 'ensureContext'
-          grep -q "think: false" companion/realtime-v6-server.js
-          grep -q "Keep the full original" README.md || true
+          grep -q "think: false" companion/realtime-final-server.js
+          grep -q "keep_alive" companion/realtime-final-server.js
+          grep -q "app.post('/v1/agent'" companion/realtime-final-server.js
 
       - name: Install web dependencies
         run: npm ci
+
+      - name: Dependency audit report
+        shell: bash
+        run: |
+          npm audit --json > /tmp/npm-audit.json || true
+          node - <<'NODE'
+          const fs = require('fs');
+          const a = JSON.parse(fs.readFileSync('/tmp/npm-audit.json','utf8'));
+          const v = a.metadata?.vulnerabilities || {};
+          console.log('WEB_AUDIT', JSON.stringify(v));
+          for (const [name, item] of Object.entries(a.vulnerabilities || {})) {
+            console.log(`WEB_VULN ${name} severity=${item.severity} range=${item.range} fix=${JSON.stringify(item.fixAvailable)}`);
+          }
+          NODE
 
       - name: Build full Jarvis HUD
         run: npm run build
@@ -51,15 +69,29 @@ jobs:
         working-directory: companion
         run: npm install --ignore-scripts
 
+      - name: Companion dependency audit report
+        working-directory: companion
+        shell: bash
+        run: |
+          npm audit --json > /tmp/companion-audit.json || true
+          node - <<'NODE'
+          const fs = require('fs');
+          const a = JSON.parse(fs.readFileSync('/tmp/companion-audit.json','utf8'));
+          console.log('COMPANION_AUDIT', JSON.stringify(a.metadata?.vulnerabilities || {}));
+          for (const [name, item] of Object.entries(a.vulnerabilities || {})) {
+            console.log(`COMPANION_VULN ${name} severity=${item.severity} range=${item.range} fix=${JSON.stringify(item.fixAvailable)}`);
+          }
+          NODE
+
       - name: Verify local modules can load
         working-directory: companion
         run: node -e "require('./agents'); require('./policy'); require('playwright-core'); console.log('local modules ok')"
 
-      - name: Boot local stack and smoke-test realtime paths
+      - name: Boot stack and smoke-test runtime
         working-directory: companion
         shell: bash
         run: |
-          node launcher.js >/tmp/jarvis-v6.log 2>&1 &
+          node launcher.js >/tmp/jarvis-final.log 2>&1 &
           JARVIS_PID=$!
           cleanup() { kill "$JARVIS_PID" 2>/dev/null || true; }
           trap cleanup EXIT
@@ -73,18 +105,18 @@ jobs:
             assert.ok(r.ok, `${url} HTTP ${r.status}: ${JSON.stringify(d)}`);
             return d;
           }
-          async function command(message) {
+          async function command(message, scene = { panels: [], selectedId: null }) {
             const started = Date.now();
             const data = await json(`${base}:3007/v1/command`, {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ message, messages: [], scene: { panels: [], selectedId: null } }),
+              body: JSON.stringify({ message, messages: [], scene }),
             });
             return { data, elapsed: Date.now() - started };
           }
           (async () => {
             const realtime = await json(`${base}:3007/health`);
-            assert.equal(realtime.version, '6.0.0');
+            assert.equal(realtime.version, '6.1.0');
 
             const browser1 = await json(`${base}:3006/health`);
             const browser2 = await json(`${base}:3006/health`);
@@ -104,7 +136,12 @@ jobs:
 
             const full = await command('make the map take the whole screen');
             assert.equal(full.data.hudActions?.[0]?.action, 'resize');
+            assert.equal(full.data.hudActions?.[0]?.target, 'map');
             assert.equal(full.data.hudActions?.[0]?.position, 'full');
+
+            const weatherMove = await command('move the weather panel to the top right');
+            assert.equal(weatherMove.data.hudActions?.[0]?.target, 'weather');
+            assert.equal(weatherMove.data.hudActions?.[0]?.position, 'top-right');
 
             const stop = await command('stop talking');
             assert.equal(stop.data.clientAction, 'stop-speaking');
@@ -115,7 +152,7 @@ jobs:
             const core = await json(`${base}:3003/health`);
             assert.equal(core.status, 'online');
 
-            console.log('JARVIS v6 runtime smoke tests passed');
+            console.log('JARVIS final runtime smoke tests passed');
           })().catch(err => { console.error(err); process.exit(1); });
           NODE
-          cat /tmp/jarvis-v6.log
+          cat /tmp/jarvis-final.log
