@@ -30,10 +30,13 @@ function sseResponse(reply, model = 'local/qwen3:4b') {
 function sanitizeReply(value) {
   let text = String(value || '').trim().replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
   const banned = /\b(?:the user|user is asking|user wants|let me think|let's see|first i need to|i should check|looking at the hud|tools section|function called|chain of thought|my reasoning)\b/i;
-  if (banned.test(text)) text = text.split(/(?<=[.!?])\s+/).filter(s => !banned.test(s)).join(' ').trim();
+  if (banned.test(text)) {
+    const sentences = text.match(/[^.!?]+[.!?]?/g) || [text];
+    const kept = sentences.filter(s => !banned.test(s)).join(' ').replace(/\s+/g, ' ').trim();
+    if (kept) text = kept;
+  }
   text = text.replace(/```(?:json)?\s*\{\s*"name"[\s\S]*?```/gi, '').trim();
-  if (!text) return 'I’m here, sir.';
-  return text.length > 1000 ? `${text.slice(0, 997).replace(/\s+\S*$/, '')}…` : text;
+  return text ? (text.length > 1000 ? `${text.slice(0, 997).replace(/\s+\S*$/, '')}…` : text) : '';
 }
 function mapPlace(text) {
   for (const p of [

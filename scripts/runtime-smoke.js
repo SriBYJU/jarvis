@@ -70,6 +70,9 @@ async function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms))
   assert.ok(!/"name"\s*:|arguments|tool_call/i.test(leakedTool.data.reply || ''));
   assert.ok(leakedTool.data.hudActions?.some(a => a.action === 'resize' && a.target === 'map' && a.position === 'full'));
 
+  const filteredPrefix = await command('reasoning leak test');
+  assert.ok(!/I[’']m here, sir/i.test(filteredPrefix.data.reply || ''), 'empty-reply fallback must never surface');
+
   const reasoningLeak = await command('reasoning leak test');
   assert.ok(!/the user|let me think|first i need to|i should check/i.test(reasoningLeak.data.reply || ''));
   assert.match(reasoningLeak.data.reply, /safe direct answer|i’m here/i);
