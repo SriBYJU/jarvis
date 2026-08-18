@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Syntax check local services
@@ -53,27 +53,16 @@ jobs:
       - name: Regenerate and install web dependencies
         run: npm install
 
-      - name: Emit refreshed lockfile
-        shell: bash
-        run: |
-          printf 'LOCK64='
-          base64 -w0 package-lock.json
-          printf '\n'
+      - name: Upload refreshed lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: Dependency audit report
-        shell: bash
-        run: |
-          npm audit --json > /tmp/npm-audit.json || true
-          node - <<'NODE'
-          const fs = require('fs');
-          const a = JSON.parse(fs.readFileSync('/tmp/npm-audit.json','utf8'));
-          const v = a.metadata?.vulnerabilities || {};
-          console.log('WEB_AUDIT', JSON.stringify(v));
-          for (const [name, item] of Object.entries(a.vulnerabilities || {})) {
-            console.log(`WEB_VULN ${name} severity=${item.severity} range=${item.range} fix=${JSON.stringify(item.fixAvailable)}`);
-          }
-          if ((v.high || 0) + (v.critical || 0) > 0) process.exit(1);
-          NODE
+      - name: Dependency security gate
+        run: npm audit --audit-level=high
 
       - name: Build full Jarvis HUD
         run: npm run build
@@ -82,7 +71,7 @@ jobs:
         working-directory: companion
         run: npm install --ignore-scripts
 
-      - name: Companion dependency audit
+      - name: Companion dependency security gate
         working-directory: companion
         run: npm audit --audit-level=high
 
