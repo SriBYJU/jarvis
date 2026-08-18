@@ -1,4 +1,4 @@
-name: JARVIS v5 CI
+name: JARVIS v6 CI
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       - name: Syntax check local core
         run: |
           node --check companion/server.js
-          node --check companion/realtime-v5-server.js
+          node --check companion/realtime-v6-server.js
           node --check companion/mcp-server.js
           node --check companion/spotify-server.js
           node --check companion/browser-server.js
@@ -29,10 +29,21 @@ jobs:
           node --check companion/policy.js
           node --check companion/launcher.js
 
+      - name: Regression guards
+        shell: bash
+        run: |
+          grep -q "<Component" pages/_app.js
+          grep -q "JarvisRuntimeV6" pages/_app.js
+          grep -q "FastMapRuntime" pages/_app.js
+          grep -q "realtime-v6-server" companion/launcher.js
+          ! grep -q "realtime-v5-server" companion/launcher.js
+          ! grep -A12 'app.get("/health"' companion/browser-server.js | grep -q 'ensureContext'
+          grep -q "think: false" companion/realtime-v6-server.js
+
       - name: Install web dependencies
         run: npm ci
 
-      - name: Build unified Jarvis shell
+      - name: Build full Jarvis HUD
         run: npm run build
 
       - name: Install local core dependencies
