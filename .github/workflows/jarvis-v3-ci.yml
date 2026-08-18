@@ -1,4 +1,4 @@
-name: JARVIS v5 CI
+name: JARVIS Final CI
 
 on:
   push:
@@ -10,35 +10,124 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
-      - name: Syntax check local core
+      - name: Syntax and architecture guards
+        shell: bash
         run: |
           node --check companion/server.js
-          node --check companion/realtime-v5-server.js
+          node --check companion/realtime-final-server.js
           node --check companion/mcp-server.js
           node --check companion/spotify-server.js
           node --check companion/browser-server.js
           node --check companion/agents.js
           node --check companion/policy.js
           node --check companion/launcher.js
+          node --check lib/store.js
+          node --check lib/llm.js
+          node --check lib/urlSafety.js
+          node --check pages/api/chat.js
+          node --check pages/api/models.js
+          node --check pages/api/upload.js
+          node --check pages/api/tools/execute.js
+          node --check pages/api/tools/browse.js
+          node --check pages/api/tools/screenshot.js
+          node --check pages/api/tools/generate-file.js
+          node --check scripts/web-smoke.js
+          node --check scripts/mock-ollama.js
+          node --check scripts/runtime-smoke.js
+          grep -q "<Component" pages/_app.js
+          grep -q "JarvisRuntimeFinal" pages/_app.js
+          grep -q "FastMapRuntime" pages/_app.js
+          ! grep -q "JarvisRuntimeV6" pages/_app.js
+          ! grep -q "JarvisShellV5" pages/_app.js
+          grep -q "realtime-final-server" companion/launcher.js
+          ! grep -q "realtime-v5-server" companion/launcher.js
+          ! grep -q "realtime-v6-server" companion/launcher.js
+          ! grep -A12 'app.get("/health"' companion/browser-server.js | grep -q 'ensureContext'
+          grep -q "think: false" companion/realtime-final-server.js
+          grep -q "keep_alive" companion/realtime-final-server.js
+          grep -q "app.post('/v1/agent'" companion/realtime-final-server.js
+          grep -q "const deep = mode === 'thinking'" companion/realtime-final-server.js
+          grep -q "model: body.model || null" components/JarvisRuntimeFinal.js
+          grep -q "function escapeHtml" pages/index.js
+          grep -q "AbortSignal.timeout(22000)" companion/server.js
+          ! grep -q 'AbortSignal.timeout(90000)' companion/server.js
+          grep -q "safeHttpFetch" pages/api/chat.js
+          grep -q "serverExecuted: false" pages/api/chat.js
+          ! grep -q 'new Function("console"' pages/api/chat.js
+          grep -q "I won't guess or invent live results" pages/api/chat.js
+          grep -q "safeHttpFetch" pages/api/tools/browse.js
+          grep -q "safeHttpFetch" pages/api/tools/screenshot.js
+          grep -q "serverExecuted: false" pages/api/tools/execute.js
+          ! grep -q '"xlsx"' package.json
+          ! grep -q '"pptxgenjs"' package.json
+          ! grep -q '"@vercel/kv"' package.json
+          ! grep -q 'api.free-ai.org' lib/llm.js
+          ! grep -q 'text.pollinations.ai' lib/llm.js
+          test -f package-lock.json
+          test -f companion/package-lock.json
 
-      - name: Install web dependencies
+      - name: Strict web dependency install
         run: npm ci
 
-      - name: Build unified Jarvis shell
+      - name: Web dependency security gate
+        run: npm audit --audit-level=high
+
+      - name: Build full Jarvis HUD
         run: npm run build
 
-      - name: Install local core dependencies
+      - name: Smoke-test restored web features
+        shell: bash
+        env:
+          JARVIS_DATA_DIR: /tmp/jarvis-web-store
+        run: |
+          rm -rf "$JARVIS_DATA_DIR"
+          npm start -- -p 3100 >/tmp/jarvis-web.log 2>&1 &
+          WEB_PID=$!
+          cleanup_web() { kill "$WEB_PID" 2>/dev/null || true; }
+          trap cleanup_web EXIT
+          for i in {1..25}; do
+            if curl -fsS http://127.0.0.1:3100/ >/dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/web-smoke.js
+          cat /tmp/jarvis-web.log
+
+      - name: Strict local core dependency install
         working-directory: companion
-        run: npm install --ignore-scripts
+        run: npm ci --ignore-scripts
+
+      - name: Companion dependency security gate
+        working-directory: companion
+        run: npm audit --audit-level=high
 
       - name: Verify local modules can load
         working-directory: companion
         run: node -e "require('./agents'); require('./policy'); require('playwright-core'); console.log('local modules ok')"
+
+      - name: Deep smoke-test realtime, agents, and background work
+        shell: bash
+        env:
+          JARVIS_DATA_DIR: /tmp/jarvis-core-store
+        run: |
+          rm -rf "$JARVIS_DATA_DIR"
+          node scripts/mock-ollama.js >/tmp/mock-ollama.log 2>&1 &
+          MOCK_PID=$!
+          (cd companion && node launcher.js >/tmp/jarvis-final.log 2>&1) &
+          JARVIS_PID=$!
+          cleanup() {
+            kill "$JARVIS_PID" 2>/dev/null || true
+            kill "$MOCK_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          sleep 3
+          node scripts/runtime-smoke.js
+          cat /tmp/mock-ollama.log
+          cat /tmp/jarvis-final.log

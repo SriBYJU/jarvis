@@ -38,9 +38,18 @@ async function ensureContext() {
 async function page() { await ensureContext(); if (!currentPage || currentPage.isClosed()) currentPage = await context.newPage(); return currentPage; }
 function snapshot(p) { return { url: p.url(), title: null }; }
 
-app.get("/health", async (_req, res) => {
-  try { await ensureContext(); res.json({ ok: true, connected: true, profile: PROFILE_DIR, pages: context.pages().length }); }
-  catch (e) { res.json({ ok: true, connected: false, profile: PROFILE_DIR, error: e.message }); }
+// IMPORTANT: health checks must be passive. Do not call ensureContext() here,
+// otherwise every periodic health poll launches a visible Chrome window.
+app.get("/health", (_req, res) => {
+  const pages = context ? context.pages().filter(p => !p.isClosed()).length : 0;
+  res.json({
+    ok: true,
+    connected: Boolean(context),
+    lazy: true,
+    profile: PROFILE_DIR,
+    pages,
+    state: context ? "active" : "idle",
+  });
 });
 
 app.post("/browser/open", async (req, res) => {

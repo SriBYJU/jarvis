@@ -1,5 +1,6 @@
 import { detectIntent } from "../../lib/intent";
 import { chatCompletion } from "../../lib/llm";
+import { safeHttpFetch } from "../../lib/urlSafety";
 import {
   addMemory, searchMemories, clearMemories,
   addProject, getProjects, getProject,
@@ -255,39 +256,48 @@ async function toolGenerateFile(prompt, fileType) {
 }
 
 function toolExecute(code, language) {
-  if (language === "python") {
-    return { type: "execute", data: { code, language: "python", output: "Python runs client-side via Pyodide.", error: null } };
-  }
-  const logs = [];
-  let error = null;
-  try {
-    const consoleMock = {
-      log: (...args) => logs.push(args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ")),
-      error: (...args) => logs.push("ERROR: " + args.join(" ")),
-      warn: (...args) => logs.push("WARN: " + args.join(" ")),
-    };
-    const result = new Function("console", `"use strict";\n${code}`)(consoleMock);
-    if (result !== undefined) logs.push(String(result));
-  } catch (e) { error = e.message; }
-  return { type: "execute", data: { code, language: language || "javascript", output: logs.join("\n") || "(no output)", error } };
+  const lang = String(language || "javascript").toLowerCase();
+  return {
+    type: "execute",
+    data: {
+      code: String(code || ""),
+      language: lang,
+      output: lang === "python"
+        ? "Python execution is client-side only. Open the Code Playground / Pyodide environment to run it."
+        : "For safety, server-side arbitrary code execution is disabled. Open JARVIS Code Playground to run this locally in your browser.",
+      error: null,
+      executionLocation: "client",
+      serverExecuted: false,
+    },
+  };
 }
 
 async function toolBrowse(url) {
   try {
-    const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; JARVIS/1.0)" }, signal: AbortSignal.timeout(10000) });
+    const resp = await safeHttpFetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; JARVIS/1.0)", Accept: "text/html,application/xhtml+xml,text/plain" },
+      signal: AbortSignal.timeout(10000),
+    });
     if (!resp.ok) return null;
-    const html = await resp.text();
+    const contentType = resp.headers.get("content-type") || "";
+    if (!/(?:text\/html|application\/xhtml\+xml|text\/plain)/i.test(contentType)) return null;
+    const html = (await resp.text()).slice(0, 1_000_000);
     const text = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000);
-    const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() || url;
+    const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim().slice(0, 300) || String(url).slice(0, 300);
     return { type: "browse", data: { url, title, content: text } };
   } catch { return null; }
 }
 
 async function toolScreenshot(url) {
   try {
-    const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 JARVIS Bot" }, signal: AbortSignal.timeout(10000) });
+    const resp = await safeHttpFetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 JARVIS Bot", Accept: "text/html,application/xhtml+xml,text/plain" },
+      signal: AbortSignal.timeout(10000),
+    });
     if (!resp.ok) return null;
-    const html = await resp.text();
+    const contentType = resp.headers.get("content-type") || "";
+    if (!/(?:text\/html|application\/xhtml\+xml|text\/plain)/i.test(contentType)) return null;
+    const html = (await resp.text()).slice(0, 1_000_000);
     const text = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4000);
     return { type: "screenshot", data: { url, summary: text.slice(0, 500), rawText: text.slice(0, 1000) } };
   } catch { return null; }
@@ -575,6 +585,13 @@ export default async function handler(req, res) {
     }
   } catch (e) {
     console.error("Tool error:", e.message);
+  }
+
+  // Do not hallucinate current/live tool results when an optional external data source is not configured.
+  if (!toolResult && ["youtube", "stock", "news", "websearch"].includes(intent)) {
+    const labels = { youtube: "YouTube search", stock: "Live stock data", news: "Live news", websearch: "Web search" };
+    const reply = `${labels[intent]} is not configured on this route yet. I won't guess or invent live results.`;
+    return res.status(200).json({ reply, tool: null, model: "tool/unavailable" });
   }
 
   // Learn from message
