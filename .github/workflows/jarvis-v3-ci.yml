@@ -7,6 +7,9 @@ on:
       - 'agent/**'
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -17,6 +20,21 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
+
+      - name: Apply one-time legacy chat hardening
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/agent/')
+        shell: bash
+        run: |
+          node scripts/patch-chat-side-doors.js
+          if ! git diff --quiet -- pages/api/chat.js; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add pages/api/chat.js
+            git commit -m "Harden legacy chat side-door helpers"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          else
+            echo "legacy chat helpers already hardened"
+          fi
 
       - name: Syntax and architecture guards
         shell: bash
@@ -30,10 +48,13 @@ jobs:
           node --check companion/policy.js
           node --check companion/launcher.js
           node --check lib/store.js
+          node --check lib/llm.js
+          node --check lib/urlSafety.js
           node --check pages/api/tools/generate-file.js
           node --check scripts/web-smoke.js
           node --check scripts/mock-ollama.js
           node --check scripts/runtime-smoke.js
+          node --check scripts/patch-chat-side-doors.js
           grep -q "<Component" pages/_app.js
           grep -q "JarvisRuntimeFinal" pages/_app.js
           grep -q "FastMapRuntime" pages/_app.js
@@ -49,9 +70,14 @@ jobs:
           grep -q "function escapeHtml" pages/index.js
           grep -q "AbortSignal.timeout(22000)" companion/server.js
           ! grep -q 'AbortSignal.timeout(90000)' companion/server.js
+          grep -q "safeHttpFetch" pages/api/chat.js
+          grep -q "serverExecuted: false" pages/api/chat.js
+          ! grep -q 'new Function("console"' pages/api/chat.js
           ! grep -q '"xlsx"' package.json
           ! grep -q '"pptxgenjs"' package.json
           ! grep -q '"@vercel/kv"' package.json
+          ! grep -q 'api.free-ai.org' lib/llm.js
+          ! grep -q 'text.pollinations.ai' lib/llm.js
           test -f package-lock.json
           test -f companion/package-lock.json
 
