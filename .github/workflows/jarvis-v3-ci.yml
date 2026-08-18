@@ -7,13 +7,10 @@ on:
       - 'agent/**'
   pull_request:
 
-permissions:
-  contents: write
-
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,40 +50,93 @@ jobs:
           ! grep -q '"pptxgenjs"' package.json
           ! grep -q '"@vercel/kv"' package.json
 
-      - name: Regenerate and install web dependencies
-        run: npm install
+      - name: Strict web dependency install
+        run: npm ci
 
-      - name: Commit secure lockfile on branch push
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/agent/')
-        shell: bash
-        run: |
-          if ! git diff --quiet -- package-lock.json; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package-lock.json
-            git commit -m "Refresh secure dependency lockfile"
-            git push origin HEAD:${GITHUB_REF_NAME}
-          else
-            echo "package-lock.json already current"
-          fi
-
-      - name: Upload refreshed lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: jarvis-package-lock
-          path: package-lock.json
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Dependency security gate
+      - name: Web dependency security gate
         run: npm audit --audit-level=high
 
       - name: Build full Jarvis HUD
         run: npm run build
 
+      - name: Smoke-test restored web features
+        shell: bash
+        env:
+          JARVIS_DATA_DIR: /tmp/jarvis-web-store
+        run: |
+          rm -rf "$JARVIS_DATA_DIR"
+          npm start -- -p 3100 >/tmp/jarvis-web.log 2>&1 &
+          WEB_PID=$!
+          cleanup_web() { kill "$WEB_PID" 2>/dev/null || true; }
+          trap cleanup_web EXIT
+          for i in {1..25}; do
+            if curl -fsS http://127.0.0.1:3100/ >/dev/null; then break; fi
+            sleep 1
+          done
+          node - <<'NODE'
+          const assert = require('assert');
+          const JSZip = require('jszip');
+          const fs = require('fs');
+          const base = 'http://127.0.0.1:3100';
+          async function request(path, body) {
+            const r = await fetch(base + path, body === undefined ? {} : {
+              method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
+            });
+            const d = await r.json().catch(() => ({}));
+            assert.ok(r.ok, `${path} HTTP ${r.status}: ${JSON.stringify(d)}`);
+            return d;
+          }
+          async function validateZipFile(kind, content, requiredEntries) {
+            const d = await request('/api/tools/generate-file', { fileType: kind, prompt: `CI ${kind}`, content });
+            assert.equal(d.type, 'file_download');
+            assert.ok(d.data?.base64?.length > 100, `${kind} output too small`);
+            const zip = await JSZip.loadAsync(Buffer.from(d.data.base64, 'base64'));
+            for (const entry of requiredEntries) assert.ok(zip.file(entry), `${kind} missing ${entry}`);
+          }
+          (async () => {
+            const home = await fetch(base + '/');
+            assert.ok(home.ok, `home HTTP ${home.status}`);
+            const html = await home.text();
+            assert.match(html, /J\.A\.R\.V\.I\.S\.|JARVIS/i);
+
+            await request('/api/tools/memory', { action: 'clear' });
+            const saved = await request('/api/tools/memory', { action: 'save', content: 'CI remembers local persistence' });
+            assert.equal(saved.data.content, 'CI remembers local persistence');
+            const found = await request('/api/tools/memory', { action: 'search', query: 'local persistence' });
+            assert.ok(found.data.some(x => x.content.includes('local persistence')));
+
+            const project = await request('/api/tools/project', { action: 'create', name: 'CI Project', description: 'runtime test' });
+            assert.equal(project.data.name, 'CI Project');
+            const noted = await request('/api/tools/project', { action: 'note', name: 'CI Project', note: 'project note works' });
+            assert.ok(noted.data.notes.some(x => x.content === 'project note works'));
+            const projectFetch = await fetch(base + '/api/tools/project?name=' + encodeURIComponent('CI Project'));
+            assert.ok(projectFetch.ok);
+            const projectData = await projectFetch.json();
+            assert.equal(projectData.data.name, 'CI Project');
+
+            const reminder = await request('/api/tools/reminder', { action: 'create', task: 'CI reminder', type: 'relative', seconds: 60 });
+            assert.equal(reminder.data.task, 'CI reminder');
+            const reminders = await request('/api/tools/reminder', { action: 'list' });
+            assert.ok(reminders.data.some(x => x.task === 'CI reminder'));
+
+            await validateZipFile('xlsx', '[["Name","Value"],["Alpha",1],["Beta",2]]', ['xl/workbook.xml','xl/worksheets/sheet1.xml','xl/styles.xml']);
+            await validateZipFile('pptx', '# First Slide\n- Point one\n---\n# Second Slide\n- Point two', ['ppt/presentation.xml','ppt/slides/slide1.xml','ppt/slides/slide2.xml']);
+            await validateZipFile('docx', '# CI Document\nThis document validates DOCX generation.', ['word/document.xml','[Content_Types].xml']);
+
+            assert.ok(fs.existsSync('/tmp/jarvis-web-store/web-store.json'), 'local persistent store file missing');
+            const persisted = JSON.parse(fs.readFileSync('/tmp/jarvis-web-store/web-store.json','utf8'));
+            assert.ok(persisted.memories?.some(x => x.content.includes('local persistence')));
+            assert.ok(persisted.projects?.some(x => x.name === 'CI Project'));
+            assert.ok(persisted.reminders?.some(x => x.task === 'CI reminder'));
+
+            console.log('restored web feature smoke tests passed');
+          })().catch(err => { console.error(err); process.exit(1); });
+          NODE
+          cat /tmp/jarvis-web.log
+
       - name: Install local core dependencies
         working-directory: companion
-        run: npm install --ignore-scripts
+        run: npm ci --ignore-scripts
 
       - name: Companion dependency security gate
         working-directory: companion
@@ -96,7 +146,7 @@ jobs:
         working-directory: companion
         run: node -e "require('./agents'); require('./policy'); require('playwright-core'); console.log('local modules ok')"
 
-      - name: Boot stack and smoke-test runtime
+      - name: Boot stack and smoke-test realtime runtime
         working-directory: companion
         shell: bash
         run: |
@@ -140,7 +190,7 @@ jobs:
             const stop = await command('stop talking'); assert.equal(stop.data.clientAction, 'stop-speaking');
             const hello = await command('hey Jarvis'); assert.ok(!/the user|let me think|first i need to/i.test(hello.data.reply || ''));
             const core = await json(`${base}:3003/health`); assert.equal(core.status, 'online');
-            console.log('JARVIS final runtime smoke tests passed');
+            console.log('JARVIS final realtime smoke tests passed');
           })().catch(err => { console.error(err); process.exit(1); });
           NODE
           cat /tmp/jarvis-final.log
