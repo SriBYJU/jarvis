@@ -28,6 +28,8 @@ jobs:
           node --check companion/agents.js
           node --check companion/policy.js
           node --check companion/launcher.js
+          node --check lib/store.js
+          node --check pages/api/tools/generate-file.js
 
       - name: Architecture regression guards
         shell: bash
@@ -44,9 +46,19 @@ jobs:
           grep -q "think: false" companion/realtime-final-server.js
           grep -q "keep_alive" companion/realtime-final-server.js
           grep -q "app.post('/v1/agent'" companion/realtime-final-server.js
+          ! grep -q '"xlsx"' package.json
+          ! grep -q '"pptxgenjs"' package.json
+          ! grep -q '"@vercel/kv"' package.json
 
-      - name: Install web dependencies
-        run: npm ci
+      - name: Regenerate and install web dependencies
+        run: npm install
+
+      - name: Emit refreshed lockfile
+        shell: bash
+        run: |
+          printf 'LOCK64='
+          base64 -w0 package-lock.json
+          printf '\n'
 
       - name: Dependency audit report
         shell: bash
@@ -60,6 +72,7 @@ jobs:
           for (const [name, item] of Object.entries(a.vulnerabilities || {})) {
             console.log(`WEB_VULN ${name} severity=${item.severity} range=${item.range} fix=${JSON.stringify(item.fixAvailable)}`);
           }
+          if ((v.high || 0) + (v.critical || 0) > 0) process.exit(1);
           NODE
 
       - name: Build full Jarvis HUD
@@ -69,19 +82,9 @@ jobs:
         working-directory: companion
         run: npm install --ignore-scripts
 
-      - name: Companion dependency audit report
+      - name: Companion dependency audit
         working-directory: companion
-        shell: bash
-        run: |
-          npm audit --json > /tmp/companion-audit.json || true
-          node - <<'NODE'
-          const fs = require('fs');
-          const a = JSON.parse(fs.readFileSync('/tmp/companion-audit.json','utf8'));
-          console.log('COMPANION_AUDIT', JSON.stringify(a.metadata?.vulnerabilities || {}));
-          for (const [name, item] of Object.entries(a.vulnerabilities || {})) {
-            console.log(`COMPANION_VULN ${name} severity=${item.severity} range=${item.range} fix=${JSON.stringify(item.fixAvailable)}`);
-          }
-          NODE
+        run: npm audit --audit-level=high
 
       - name: Verify local modules can load
         working-directory: companion
@@ -108,8 +111,7 @@ jobs:
           async function command(message, scene = { panels: [], selectedId: null }) {
             const started = Date.now();
             const data = await json(`${base}:3007/v1/command`, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
+              method: 'POST', headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ message, messages: [], scene }),
             });
             return { data, elapsed: Date.now() - started };
@@ -117,41 +119,21 @@ jobs:
           (async () => {
             const realtime = await json(`${base}:3007/health`);
             assert.equal(realtime.version, '6.1.0');
-
             const browser1 = await json(`${base}:3006/health`);
             const browser2 = await json(`${base}:3006/health`);
-            assert.equal(browser1.state, 'idle');
-            assert.equal(browser2.state, 'idle');
-            assert.equal(browser1.pages, 0);
-            assert.equal(browser2.pages, 0);
-
+            assert.equal(browser1.state, 'idle'); assert.equal(browser2.state, 'idle');
+            assert.equal(browser1.pages, 0); assert.equal(browser2.pages, 0);
             const time = await command('what time is it');
-            assert.match(time.data.reply, /It's /);
-            assert.ok(time.elapsed < 1200, `instant time command took ${time.elapsed}ms`);
-
+            assert.match(time.data.reply, /It's /); assert.ok(time.elapsed < 1200, `instant time command took ${time.elapsed}ms`);
             const map = await command('pull up a map of Richmond Virginia');
-            assert.equal(map.data.hudActions?.[0]?.action, 'show');
-            assert.equal(map.data.hudActions?.[0]?.panelType, 'map');
-            assert.equal(map.data.hudActions?.[0]?.query, 'Richmond Virginia');
-
+            assert.equal(map.data.hudActions?.[0]?.action, 'show'); assert.equal(map.data.hudActions?.[0]?.panelType, 'map'); assert.equal(map.data.hudActions?.[0]?.query, 'Richmond Virginia');
             const full = await command('make the map take the whole screen');
-            assert.equal(full.data.hudActions?.[0]?.action, 'resize');
-            assert.equal(full.data.hudActions?.[0]?.target, 'map');
-            assert.equal(full.data.hudActions?.[0]?.position, 'full');
-
+            assert.equal(full.data.hudActions?.[0]?.action, 'resize'); assert.equal(full.data.hudActions?.[0]?.target, 'map'); assert.equal(full.data.hudActions?.[0]?.position, 'full');
             const weatherMove = await command('move the weather panel to the top right');
-            assert.equal(weatherMove.data.hudActions?.[0]?.target, 'weather');
-            assert.equal(weatherMove.data.hudActions?.[0]?.position, 'top-right');
-
-            const stop = await command('stop talking');
-            assert.equal(stop.data.clientAction, 'stop-speaking');
-
-            const hello = await command('hey Jarvis');
-            assert.ok(!/the user|let me think|first i need to/i.test(hello.data.reply || ''));
-
-            const core = await json(`${base}:3003/health`);
-            assert.equal(core.status, 'online');
-
+            assert.equal(weatherMove.data.hudActions?.[0]?.target, 'weather'); assert.equal(weatherMove.data.hudActions?.[0]?.position, 'top-right');
+            const stop = await command('stop talking'); assert.equal(stop.data.clientAction, 'stop-speaking');
+            const hello = await command('hey Jarvis'); assert.ok(!/the user|let me think|first i need to/i.test(hello.data.reply || ''));
+            const core = await json(`${base}:3003/health`); assert.equal(core.status, 'online');
             console.log('JARVIS final runtime smoke tests passed');
           })().catch(err => { console.error(err); process.exit(1); });
           NODE
